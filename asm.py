@@ -1,4 +1,6 @@
 import time
+
+import proc
 from utils import *
 from segments import *
 from proc import *
