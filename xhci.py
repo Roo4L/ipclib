@@ -450,12 +450,12 @@ class XHCI:
         self.fid = proc_get_address(thread, "XHCI_PCI_DEVICE")
 
     def dump_pci_config(self):
-        sb_mmio, _ = setup_sideband_channel(0x050400 | self.port, 0, self.fid << 3)
+        sb_mmio, _ = setup_sideband_channel(t, 0x050400 | self.port, 0, self.fid << 3)
         t.memdump(phys(sb_mmio), 0x100, 1)
         save_mmios(pwd, [(sb_mmio, 0x1000)], "PCI_" + str(self.fid) + ".0_")
     
     def check_pci_from_ME(self):
-        sb_mmio, _ = setup_sideband_channel(0x050400 | self.port, 0, self.fid << 3)
+        sb_mmio, _ = setup_sideband_channel(t, 0x050400 | self.port, 0, self.fid << 3)
         base = t.arch_register("ldtbas")
         selector = 0
         for idx in range(128):
@@ -473,15 +473,15 @@ class XHCI:
                     "mov eax, fs:[eax]",
                     "mov fs, edx")
         wait_until_infinite_loop(t)
-        print "Read from XHCI USB Using ME processor : %s" % reg("eax")
+        print("Read from XHCI USB Using ME processor : %s" % reg("eax"))
 
     def sb_read(self, rw_opcode, fid, size, offset):
         sb_channel = 1 << 28 | (rw_opcode | 1) << 16 | (rw_opcode & ~1) << 8 | self.port
-        sb_mmio, _ = setup_sideband_channel(sb_channel, 0, fid << 3)
+        sb_mmio, _ = setup_sideband_channel(t, sb_channel, 0, fid << 3)
         return t.mem(phys(sb_mmio + offset), size)
     def sb_write(self, rw_opcode, fid, size, offset, value):
         sb_channel = 1 << 28 | (rw_opcode | 1) << 16 | (rw_opcode & ~1) << 8 | self.port
-        sb_mmio, _ = setup_sideband_channel(sb_channel, 0, fid << 3)
+        sb_mmio, _ = setup_sideband_channel(t, sb_channel, 0, fid << 3)
         t.mem(phys(sb_mmio + offset), size, value)
 
     def pci_read(self, size, offset):
