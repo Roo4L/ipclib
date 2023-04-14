@@ -191,7 +191,7 @@ def memset(addr, value, size):
     #for i in range(0, size, 4):
     #    t.mem(phys(addr + i), 4, value)
 
-def memtostr(addr, size):
+def memtostr(t, addr, size):
     return "".join(map(chr, t.memblock(addr, size, 1).ToRawBytes()))
 
 def phys(addr):

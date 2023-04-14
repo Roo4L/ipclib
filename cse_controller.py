@@ -1,4 +1,5 @@
 import proc
+import ipccli
 
 class CSEController:
     def __init__(self, execution_thread):
@@ -11,8 +12,20 @@ class CSEController:
         self.set_register("eip", self.get_proc_address("RESET_ME_CALL"))
         ebp = self.get_register("ebp")
         self.step_over(4)
-        self.thread.mem(ebp-8, 4, 0xd)
+        self.thread.mem(ipccli.Address(ebp-8), 4, 0xd)
         self.thread.go()
+    
+    def resume(self):
+        self.thread.halt()
+        esp = self.pop()
+        self.set_register("eip", esp)
+        self.thread.go()
+    
+    def pop(self):
+        ss = self.get_register("ss")
+        ret = self.thread.mem(ss.ToHex() + ":" + self.get_register("esp").ToHex(), 4)
+        self.set_register("esp", self.get_register("esp") + 4)
+        return ret
 
     def set_register(self, name, value):
         self.thread.arch_register(name, value)
