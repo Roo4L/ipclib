@@ -1,4 +1,5 @@
 import os
+import time
 from utils import *
 from proc import *
 from mem import *
@@ -89,8 +90,9 @@ ldt_ranges = [
     (0x00000023, 0x001C7),
     (0x00000000, 0x00003),
     (0xFFFF0000, 0xF01CF)]
+    
 
-def save_mmios(pwd, mmios, prefix="MMIO_"):
+def save_mmios(t, pwd, mmios, prefix="MMIO_"):
     try:
         os.makedirs(pwd)
     except:
@@ -112,26 +114,138 @@ def save_mmios(pwd, mmios, prefix="MMIO_"):
                 chunk = 4 * 1024
                 if chunk > size:
                     chunk = size
-                f.write(memtostr(phys(addr), chunk))
+                f.write(memtostr(t, phys(addr), chunk))
                 addr += chunk
                 size -= chunk
+
 
 # Sideband loading. No idea what the value is/represents, but 0x706a8 makes it
 # load DCI sideband into segment 0x19f (at 0xf6110000) and 0x70684 loads the DFx
 # agregator instead. So let's try to bruteforce a few of these, see if any of them
 # returns anything.
 
-def bruteforce_sideband(pwd, group=0, start=0, end=0x100, size=0x8000, rs=1, fid=0):
+class Sideband(object):
+    """
+    IOSF Sideband bus
+    """
+
+    # Base address register (?)
+    BAR_READ_GROUP = 0x00
+    BAR_WRITE_GROUP = 0x01
+    # PCI Configuration space
+    PCI_READ_GROUP = 0x04
+    PCI_WRITE_GROUP = 0x05
+    # Private Configuration space
+    PRIVATE_READ_GROUP = 0x06
+    PRIVATE_WRITE_GROUP = 0x07
+    
+
+    def __init__(self, t, base_address=None):
+        self.__thread = t
+        self.base_addr = proc_get_address(t, "SB_CHANNEL") if not base_address else base_address
+        self.broken_ports = proc_get_address(t, "SB_BROKEN_PORTS")
+
+    def __setup(self, channel, rs=1, fid=0,):
+        # Can only set it if the flag 0x2 (LOCK) is not set
+        #sb_mmio = proc_get_address(t, "SB_WINDOW_MMIO")
+        #t.mem(phys(sb_channel_port_addr), 4, sb_mmio)
+        #t.mem(phys(sb_channel_port_addr + 4), 4, (size + 0xfff) & ~0xfff)
+        self.__thread.mem(phys(self.base_addr + 0x18), 4, channel)
+        self.__thread.mem(phys(self.base_addr + 0x1c), 4, rs << 8 | fid)
+        return (self.__thread.mem(phys(self.base_addr), 4), self.__thread.mem(phys(self.base_addr + 4), 4))
+    
+    def __channel_value(self, group, port):
+        return (group << 8) + port
+
+    def read(self, group, port, size, rs=1, fid=0):
+        if not self.__thread.ishalted():
+            raise Exception("Execution threads is not halted!")
+        
+        channel = self.__channel_value(group, port)
+        sb_mmio, _ = self.__setup(channel, rs, fid)
+        ret = self.__thread.memblock(phys(sb_mmio), size, 1)
+        try:
+            a = self.__thread.mem(phys(self.base_addr + 0x18), 4)
+            if a != channel:
+                raise "Error"
+        except:
+            print("SB seems to have locked")
+        
+        return ret
+
+    def dump(self, channel, size=0x8000, rs=1, fid=0, pwd=None):
+        if not pwd:
+            memdump = self.read(channel, size, rs, fid)
+            print(memdump)
+        else:
+            sb_mmio, _ = self.__setup(channel, rs, fid)
+            save_mmios(self.__thread, pwd, [(sb_mmio, size)], "SB_" + hex(channel) + "_")
+    
+    
+    def __value_is_interesting(self, value):
+        for i in value.ReadByteArray():
+            if i != 0xFF and i != 0x00:
+                return True
+        return False
+    
+    def bruteforce(self, group, pstart=0, pend=0x100, rs=1, fid=0, size=0x10):
+        for port in xrange(pstart, pend):
+            if port in self.broken_ports:
+                continue
+
+            port_value = self.read(group, port, size, rs, fid)
+            if self.__value_is_interesting(port_value):
+                print("Group: %s. Port %s. Fid: %s" % (hex(group), hex(port), hex(fid)))
+                print("Value: %s" % hex(port_value))
+
+    def bruteforce_port_pci(self, port, dstart=0, dend=32, fstart=0, fend=8, rs=1, size=0x10):
+        for dev in xrange(dstart, dend, 1):
+            for func in xrange(fstart, fend, 1):
+                fid = ((dev << 3)+ func)
+                group = (self.PCI_WRITE_GROUP << 8) + self.PCI_READ_GROUP
+                value = self.read(group, port, size, rs, fid)
+                if not self.__value_is_interesting(value):
+                    break
+                print("Device-function: %d-%d" % (dev, func))
+                print("Value: %s" % hex(value))
+    
+    def bruteforce_with_pci(self, pstart=0x00, pend=0x100, dstart=0, dend=32, fstart=0, fend=8, rs=1, size=0x10, ignore_ffports=True):
+        bar_group = (self.BAR_WRITE_GROUP << 8) + self.BAR_READ_GROUP
+        for port in xrange(pstart, pend):
+            if port in self.broken_ports:
+                continue
+
+            port_value = self.read(bar_group, port, size, rs, 0)
+            if ignore_ffports and self.__value_is_interesting(port_value) or not ignore_ffports:
+                print("Group: %s. Port %s. Fid: %s" % (hex(bar_group), hex(port), hex(0)))
+                print("Value: %s" % hex(port_value))
+                self.bruteforce_port_pci(port, dstart, dend, fstart, fend, rs)
+
+
+def bruteforce_sideband(t, pwd, group=0, start=0, end=0x100, size=0x8000, rs=1, fid=0):
     for i in xrange(start, end):
+        # if i in cse_broken_ports:
+        #     print("Skipping Port Id %d: it is known to be broken." % i)
+        #     continue
         channel = (group << 8) + i
         print("Dumping Sideband : %s" % hex(channel))
-        dump_sideband_channel(pwd, channel, size=size, rs=rs, fid=fid)
+        dump_sideband_channel(t, pwd, channel, size=size, rs=rs, fid=fid)
+        # time.sleep(5)
 
-def bruteforce_sideband_port(pwd, port, start=0, end=0x100, size=0x1000):
+def bruteforce_sideband_port(t, pwd, port, start=0, end=0x100, size=0x1000):
     for i in xrange(start, end, 2):
-        bruteforce_sideband(pwd, group=i, start=port, end=port+1, size=size)
+        bruteforce_sideband(t, pwd, group=i, start=port, end=port+1, size=size)
 
-def setup_sideband_channel(channel, rs=1, fid=0, base_address=None):
+def bruteforce_sideband_port_pci(t, pwd, port, dstart=0, dend=32, fstart=0, fend=1, size=0x1000):
+    for dev in xrange(dstart, dend, 1):
+        for func in xrange(fstart, fend, 1):
+            fid = ((dev << 3)+ func)
+            print("Device-function: %d-%d" % (dev, func))
+            bruteforce_sideband(t, pwd, group=0x0504, start=port, end=port+1,
+                                size=size, fid=fid)
+        
+
+def setup_sideband_channel(t, channel, rs=1, fid=0, base_address=None):
     if base_address:
         sb_channel_port_addr = base_address
     else:
@@ -144,16 +258,16 @@ def setup_sideband_channel(channel, rs=1, fid=0, base_address=None):
     t.mem(phys(sb_channel_port_addr + 0x1c), 4, rs << 8 | fid)
     return (t.mem(phys(sb_channel_port_addr), 4), t.mem(phys(sb_channel_port_addr + 4), 4))
 
-def dump_sideband_channel(pwd, channel, size=0x8000, rs=1, fid=0):
+def dump_sideband_channel(t, pwd, channel, size=0x8000, rs=1, fid=0):
     try:
         t.halt()
     except:
         # It could timeout for no good reason
         pass
     sb_channel_port_addr = proc_get_address(t, "SB_CHANNEL")
-    sb_mmio, _ = setup_sideband_channel(channel, rs, fid)
+    sb_mmio, _ = setup_sideband_channel(t, channel, rs, fid)
     t.memdump(phys(sb_mmio), 0x10, 1)
-    save_mmios(pwd, [(sb_mmio, size)], "SB_" + hex(channel) + "_")
+    # save_mmios(t, pwd, [(sb_mmio, size)], "SB_" + hex(channel) + "_")
 
     try:
         a = t.mem(phys(sb_channel_port_addr + 0x18), 4)
@@ -163,7 +277,7 @@ def dump_sideband_channel(pwd, channel, size=0x8000, rs=1, fid=0):
         print("SB seems to have locked")
         ipc.resettarget()
 
-def dump_sideband_channel_via_sbreg(pwd, channel, offset=0, size=0x8000, rs=1, fid=0, bar=0, opcode=0):
+def dump_sideband_channel_via_sbreg(t, pwd, channel, offset=0, size=0x8000, rs=1, fid=0, bar=0, opcode=0):
     tpsbs = [i for i in dir(ipc.stateport) if "tpsb" in i]
     if len(tpsbs) == 0:
         print("Can't find Tap2IOSF device")

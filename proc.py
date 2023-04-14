@@ -33,6 +33,9 @@ proc_addresses = {
         "KBP_CSME_C0_T0": 0xF5020000,
         "CSE_C0_T0": 0xF6110000
     },
+    "SB_BROKEN_PORTS": {
+        "CSE_C0_T0": [0x25, 0x84, 0x99, 0xff],
+    },
     "MMIOS": {
         "SPT_CSME_C0_T0": [
             (0xF5022000, 0x00000C00),
