@@ -200,7 +200,7 @@ ipc.devs.base.cmds._instruction_size = force_32_bit_asmmode
 
 def reset_me():
     t.halt()
-    reg("eip", proc("RESET_ME_CALL"))
+    reg("eip", proc_get_address(t, "RESET_ME_CALL"))
     ebp = reg("ebp")
     stepOver(4)
     t.mem(ebp-8, 4, 0xd)
