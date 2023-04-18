@@ -3,6 +3,7 @@ from utils import *
 from segments import *
 from proc import *
 from asm import *
+import time
 
 xhci_debug = debug
 
@@ -579,9 +580,13 @@ class XHCI:
     def reset(self):
         if self.bar_read32(0x80) & 1:
             self.stop()
-        self.command(2)
+        try:
+            self.command(2)
+        except:
+            # It is a normal reaction for XHCI reset under linux
+            pass
         xhci_debug("Resetting controller...")
-        usleep(1000)
+        time.sleep(2)
         # Check Command cleared
         if self.handshake(0x80, 2, 0):
             xhci_debug("OK")
