@@ -446,6 +446,28 @@ class XHCIInputContext:
         self.dev = XHCIDevice(slot_id, self.ctx + 0x20)
         
 class XHCI:
+    # Sideband and PCI addressing
+    port = None
+    fid = None
+
+    # Host controller Parameters
+    page_size = None
+    max_slots = None
+    max_ports = None
+    max_sp_bufs = None
+
+    # DMA buffer for data structures allocation
+    dma_buffer = None
+
+    # XHCI Data structures
+    dcbaa = None
+    sp_ptrs = None
+    cr = None
+    er = None
+    ev_ring_table = None
+    devs = None
+    transfer_rings = None
+
     def __init__(self, thread):
         self.port = proc_get_address(thread, "XHCI_PORTID")
         self.fid = proc_get_address(thread, "XHCI_PCI_DEVICE")
@@ -711,6 +733,7 @@ class XHCI:
 
     def gen_route(self, port):
         return ipc.BitData(20, port & 0xf)
+    
     def set_address(self, port):
         slot_id = self.cr.enable_slot()
         if slot_id is None:
