@@ -604,7 +604,7 @@ class XHCI:
         self.page_size = self.bar_read16(0x88).ToUInt32() << 12
         self.max_slots = self.bar_read32(0x4).ToUInt32() & 0xff
         self.max_ports = (self.bar_read32(0x4).ToUInt32() & 0xff000000) >> 24
-        xhci_debug("caplen:  %s" % hex(self.bar_read32(0)))
+        xhci_debug("caplen:  %s" % hex(self.bar_read16(0)))
         xhci_debug("rtsoff:  %s" % hex(self.bar_read32(0x18)))
         xhci_debug("dboff:   %s" % hex(self.bar_read32(0x14)))
         xhci_debug("hciversion: %d.%d" % (self.bar_read8(0x3), self.bar_read8(0x2)))
