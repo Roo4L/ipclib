@@ -684,7 +684,6 @@ class XHCI:
 
         self.devs = [None]* self.max_ports
         self.transfer_rings = [None]* self.max_ports
-        self.check_ports()
         
     def check_ports(self):
         for i in range(self.max_ports):
@@ -763,7 +762,7 @@ class XHCI:
         self.transfer_rings[port] = tr
         self.set(self.dcbaa + slot_id, ic.dev.ctx)
         self.cr.address_device(slot_id, ic.ctx)
-        
+
         
 try:
     xhci = XHCI(t)
