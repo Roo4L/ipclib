@@ -4,41 +4,9 @@ from segments import *
 from proc import *
 from asm import *
 import time
+from usb import Data, HCI, usb_debug
+from xhci_rh import XHCIRootHub
 
-xhci_debug = debug
-
-class Data:
-    def __init__(self, size, data=0, addr=None):
-        self.size = size
-        self.data = ipc.BitData(size, data)
-        self.addr = addr
-    
-    def get(self, register):
-        if type(register) == int:
-            offset, start, length = (register, 0, 32)
-        else:
-            offset, start, length = register
-        if self.addr is not None:
-            self.read(self.addr)
-        value = self.data[offset:offset+31]
-        return value[start:start+length-1]
-    
-    def set(self, register, value):
-        if type(register) == int:
-            offset, start, length = (register, 0, 32)
-        else:
-            offset, start, length = register
-        value = ipc.BitData(length, value)
-        if self.addr is not None:
-            self.read(self.addr)
-        self.data[offset+start:offset+start+length-1] = value
-        if self.addr is not None:
-            self.write(self.addr)
-
-    def read(self, addr):
-        self.data = t.memblock(phys(addr), self.size / 8, 1)
-    def write(self, addr):
-         t.memblock(phys(addr), self.size / 8, 1, self.data.ToRawBytes())
         
 class TRB(Data):
     PTR_LOW = 0
@@ -201,7 +169,7 @@ class XHCICommandRing(XHCICycleRing):
 
     def post_command(self):
         trb = self.TRB()
-        xhci_debug("Posting command %s" % TRBType.name(trb.get(TRBControlBits.TT)))
+        usb_debug("Posting command %s" % TRBType.name(trb.get(TRBControlBits.TT)))
         # Set Cycle bit
         trb.set(TRBControlBits.C, self.pcs)
         trb.write(self.current)
@@ -221,7 +189,7 @@ class XHCICommandRing(XHCICycleRing):
 
         cc = xhci.er.wait_for_command_aborted(addr)
         if xhci.bar_read32(0x98) & 8:
-            xhci_debug("**FATAL**: xhci_wait_for_command: Command ring still running")
+            usb_debug("**FATAL**: xhci_wait_for_command: Command ring still running")
         return cc
 
     def noop(self):
@@ -290,17 +258,17 @@ class XHCIEventRing(XHCICycleRing):
     def handle_event(self, trb):
         tt = trb.get(TRBControlBits.TT)
         cc = trb.get(TRBStatusBits.CC)
-        xhci_debug("Received event : %s, Completion Code: %s\n%s" % (TRBType.name(tt), TRBCompletionCode.name(cc), trb))
+        usb_debug("Received event : %s, Completion Code: %s\n%s" % (TRBType.name(tt), TRBCompletionCode.name(cc), trb))
         if tt == TRBType.EV_CMD_CMPL:
-            xhci_debug("Warning: Spurious command completion event")
+            usb_debug("Warning: Spurious command completion event")
         elif tt == TRBType.EV_PORTSC:
-            xhci_debug("Port Status Change Event for %d: %s\n" %
+            usb_debug("Port Status Change Event for %d: %s\n" %
                        (trb.get(TRBPtrBits.PORT), TRBCompletionCode.name(cc)))
         elif tt == TRBType.EV_HOST:
             if cc == TRBCompletionCode.EVENT_RING_FULL_ERROR:
-                xhci_debug("Event ring full!")
+                usb_debug("Event ring full!")
         else:
-            xhci_debug("Warning: Spurious event: %s, Completion Code: %s\n" %
+            usb_debug("Warning: Spurious event: %s, Completion Code: %s\n" %
                        (TRBType.name(tt), TRBCompletionCode.name(cc)))
         self.advance_dequeue_pointer()
         
@@ -316,7 +284,7 @@ class XHCIEventRing(XHCICycleRing):
         while True:
             timeout = self.wait_for_event_type(TRBType.EV_CMD_CMPL, timeout)
             if timeout == 0:
-                xhci_debug("Warning: Timed out waiting for TRB_EV_CMD_CMPL.\n")
+                usb_debug("Warning: Timed out waiting for TRB_EV_CMD_CMPL.\n")
                 break
             trb = self.TRB()
             if trb.get(TRB.PTR_LOW) == addr:
@@ -333,7 +301,7 @@ class XHCIEventRing(XHCICycleRing):
         while True:
             timeout = self.wait_for_event_type(TRBType.EV_CMD_CMPL, timeout)
             if timeout == 0:
-                xhci_debug("Warning: Timed out waiting for TRB_EV_CMD_CMPL.\n")
+                usb_debug("Warning: Timed out waiting for TRB_EV_CMD_CMPL.\n")
                 break
             trb = self.TRB()
             if trb.get(TRB.PTR_LOW) == addr:
@@ -346,7 +314,7 @@ class XHCIEventRing(XHCICycleRing):
         while True:
             timeout = self.wait_for_event_type(TRBType.EV_CMD_CMPL, timeout)
             if timeout == 0:
-                xhci_debug("Warning: Timed out waiting for COMMAND_RING_STOPPED.\n")
+                usb_debug("Warning: Timed out waiting for COMMAND_RING_STOPPED.\n")
                 break
             trb = self.TRB()
             if trb.get(TRBStatusBits.CC) == TRBCompletionCode.COMMAND_RING_STOPPED:
@@ -445,7 +413,7 @@ class XHCIInputContext:
         t.mem(phys(self.ctx + 4), 4, drop)
         self.dev = XHCIDevice(slot_id, self.ctx + 0x20)
         
-class XHCI:
+class XHCI(HCI):
     # Sideband and PCI addressing
     port = None
     fid = None
@@ -471,6 +439,38 @@ class XHCI:
     def __init__(self, thread):
         self.port = proc_get_address(thread, "XHCI_PORTID")
         self.fid = proc_get_address(thread, "XHCI_PCI_DEVICE")
+
+        self.page_size = self.bar_read16(0x88).ToUInt32() << 12
+        self.max_slots = self.bar_read32(0x4).ToUInt32() & 0xff
+        self.max_ports = (self.bar_read32(0x4).ToUInt32() & 0xff000000) >> 24
+        usb_debug("caplen:  %s" % hex(self.bar_read16(0)))
+        usb_debug("rtsoff:  %s" % hex(self.bar_read32(0x18)))
+        usb_debug("dboff:   %s" % hex(self.bar_read32(0x14)))
+        usb_debug("hciversion: %d.%d" % (self.bar_read8(0x3), self.bar_read8(0x2)))
+        usb_debug("Max Slots:   %d" % self.max_slots)
+        usb_debug("Max Ports:   %d" % self.max_ports)
+        usb_debug("Page Size:   %d" % self.page_size)
+
+        
+        # Allocate resources
+        self.dcbaa = dma_align(64, (self.max_slots + 1 ) * 8, memset_value=0)
+        max_sp_hi = (self.bar_read32(0x8) & 0x03E00000) >> 21
+        max_sp_lo = (self.bar_read32(0x8) & 0xF8000000) >> 27
+        self.max_sp_bufs = max_sp_hi << 5 | max_sp_lo
+        usb_debug("Max Scratch Pad Buffers:   %d" % self.max_sp_bufs)
+        if self.max_sp_bufs:
+            self.sp_ptrs = dma_align(64, self.max_sp_bufs * 8, memset_value=0)
+            for i in range(self.max_sp_bufs):
+                page = dma_align(self.page_size, self.page_size)
+                self.set(self.sp_ptrs + i*8, page)
+            self.set(self.dcbaa, self.sp_ptrs)
+        self.dma_buffer = dma_align(64 * 1024, 64 * 1024)
+        self.cr = XHCICommandRing(4)
+        usb_debug("command ring %s" % hex(self.cr.ring))
+        self.er = XHCIEventRing(64)
+        usb_debug("event ring %s" % hex(self.er.ring))
+        self.ev_ring_table = dma_align(64, 0x10, memset_value=0)
+        usb_debug("event ring table %s" % hex(self.ev_ring_table))
 
     def dump_pci_config(self):
         sb_mmio, _ = setup_sideband_channel(0x050400 | self.port, 0, self.fid << 3)
@@ -552,7 +552,7 @@ class XHCI:
 
     def print_status(self):
         sts = self.status()
-        xhci_debug("XHCI Status : \n" \
+        usb_debug("XHCI Status : \n" \
                    "  Host Controller Error : %s\n" \
                    "  Controller Not Ready : %s\n" \
                    "  Save/Restore Error : %s\n" \
@@ -570,15 +570,15 @@ class XHCI:
             usleep(1)
             timeout -= 1
         if timeout == 0:
-            xhci_debug("Timeout waiting for 0x%X & 0x%X to reach 0x%X!" % (reg, mask, value))
+            usb_debug("Timeout waiting for 0x%X & 0x%X to reach 0x%X!" % (reg, mask, value))
         return timeout
 
     def wait_ready(self):
-        xhci_debug("Waiting for controller to be ready...")
+        usb_debug("Waiting for controller to be ready...")
         if self.handshake(0x84, 1 << 11, 0) == 0:
-            xhci_debug("Timeout!")
+            usb_debug("Timeout!")
             return -1
-        xhci_debug("OK")
+        usb_debug("OK")
         return 0
 
     def command(self, command, set=True):
@@ -594,11 +594,11 @@ class XHCI:
         self.command(1)
         # Check Halted Status
         if self.handshake(0x84, 1, 0):
-            xhci_debug("XHCI Controller started")
+            usb_debug("XHCI Controller started")
     def stop(self):
         self.command(1, False)
         if self.handshake(0x84, 1, 1):
-            xhci_debug("XHCI Controller stopped")
+            usb_debug("XHCI Controller stopped")
     def reset(self):
         if self.bar_read32(0x80) & 1:
             self.stop()
@@ -607,14 +607,14 @@ class XHCI:
         except:
             # It is a normal reaction for XHCI reset under linux
             pass
-        xhci_debug("Resetting controller...")
+        usb_debug("Resetting controller...")
         time.sleep(2)
         # Check Command cleared
         if self.handshake(0x80, 2, 0):
-            xhci_debug("OK")
+            usb_debug("OK")
         # Check Not Ready status
         if self.handshake(0x84, 1<<11, 0):
-            xhci_debug("OK")
+            usb_debug("OK")
         
     def setup(self):
         # Enable COMMAND MEMORY and BUS MASTER 
@@ -623,38 +623,6 @@ class XHCI:
         self.init()
 
     def init(self):
-        self.page_size = self.bar_read16(0x88).ToUInt32() << 12
-        self.max_slots = self.bar_read32(0x4).ToUInt32() & 0xff
-        self.max_ports = (self.bar_read32(0x4).ToUInt32() & 0xff000000) >> 24
-        xhci_debug("caplen:  %s" % hex(self.bar_read16(0)))
-        xhci_debug("rtsoff:  %s" % hex(self.bar_read32(0x18)))
-        xhci_debug("dboff:   %s" % hex(self.bar_read32(0x14)))
-        xhci_debug("hciversion: %d.%d" % (self.bar_read8(0x3), self.bar_read8(0x2)))
-        xhci_debug("Max Slots:   %d" % self.max_slots)
-        xhci_debug("Max Ports:   %d" % self.max_ports)
-        xhci_debug("Page Size:   %d" % self.page_size)
-
-        
-        # Allocate resources
-        self.dcbaa = dma_align(64, (self.max_slots + 1 ) * 8, memset_value=0)
-        max_sp_hi = (self.bar_read32(0x8) & 0x03E00000) >> 21
-        max_sp_lo = (self.bar_read32(0x8) & 0xF8000000) >> 27
-        self.max_sp_bufs = max_sp_hi << 5 | max_sp_lo
-        xhci_debug("Max Scratch Pad Buffers:   %d" % self.max_sp_bufs)
-        if self.max_sp_bufs:
-            self.sp_ptrs = dma_align(64, self.max_sp_bufs * 8, memset_value=0)
-            for i in range(self.max_sp_bufs):
-                page = dma_align(self.page_size, self.page_size)
-                self.set(self.sp_ptrs + i*8, page)
-            self.set(self.dcbaa, self.sp_ptrs)
-        self.dma_buffer = dma_align(64 * 1024, 64 * 1024)
-        self.cr = XHCICommandRing(4)
-        xhci_debug("command ring %s" % hex(self.cr.ring))
-        self.er = XHCIEventRing(64)
-        xhci_debug("event ring %s" % hex(self.er.ring))
-        self.ev_ring_table = dma_align(64, 0x10, memset_value=0)
-        xhci_debug("event ring table %s" % hex(self.ev_ring_table))
-
         # Setup hardware
         self.wait_ready()
         self.bar_write8(0xb8, self.max_slots)
@@ -670,7 +638,7 @@ class XHCI:
         self.bar_write32(0x2028, 1) # Size of evet ring table
         self.bar_write32(0x2030, self.ev_ring_table)
         self.bar_write32(0x2034, 0)
-        xhci.bar_write32(0x2038, self.er.current)
+        self.bar_write32(0x2038, self.er.current)
 
         self.start()
 
@@ -679,56 +647,19 @@ class XHCI:
 
         cc = self.cr.noop()
         running = self.bar_read32(0x98) & 8
-        xhci_debug("NOOP result : %s" % TRBCompletionCode.name(cc))
-        xhci_debug("Command ring is %s" % ("running" if running else "not running"))
+        usb_debug("NOOP result : %s" % TRBCompletionCode.name(cc))
+        usb_debug("Command ring is %s" % ("running" if running else "not running"))
 
         self.devs = [None]* self.max_ports
         self.transfer_rings = [None]* self.max_ports
-        
-    def check_ports(self):
-        for i in range(self.max_ports):
-            portsc = self.bar_read32(0x480 + 0x10 * i)
-            if portsc & 1:
-                xhci_debug("Port %d has a connected device" % (i + 1))
-                speed = self.hub_reset(i)
-                if speed > 0:
-                    self.set_address(i)
 
-    def hub_reset(self, port):
-        portsc = self.bar_read32(0x480 + 0x10 * port)
-        pls = portsc[5:7]
-        if pls == 0:
-            # USB3 port, already reset
-            xhci_debug("USB3 Port")
-        elif pls == 7:
-            # Initiate reset
-            portsc[4] = 1
-            self.bar_write32(0x480 + 0x10 *port, portsc)
-        else:
-            xhci_debug("Unknown port state %s" % pls)
-        timeout = 100
-        while True:
-            portsc = self.bar_read32(0x480 + 0x10 * port)
-            if portsc[0] == 0:
-                xhci_debug("Disconnected while resetting")
-                return -1
-            if portsc[1] == 1:
-                break
-            timeout -= 1
-            if timeout == 0:
-                xhci_debug("Timeout on reset")
-                return -1
-            usleep(1)
-        speed = portsc[10:12]
-        XHCI_PORT_SPEEDS = {
-            0: " - ",
-            1: "Full",
-            2: "Low",
-            3: "High",
-            4: "Super"
-        }
-        xhci_debug("Port %d reset. SC=%s - %s Speed" % (port + 1, portsc, XHCI_PORT_SPEEDS.get(int(speed), "Super")))
-        return speed
+        self.roothub = XHCIRootHub(self)
+        self.init_device_entry(self.roothub, 0)
+    
+    def init_device_entry(self, dev, i):
+        if self.devices[i] != None:
+            usb_debug("warning: device %d reassigned?\n" % i)
+        self.devices[i] = dev
 
     def gen_route(self, port):
         return ipc.BitData(20, port & 0xf)
@@ -736,7 +667,7 @@ class XHCI:
     def set_address(self, port):
         slot_id = self.cr.enable_slot()
         if slot_id is None:
-            xhci_debug("No available slots!")
+            usb_debug("No available slots!")
             return None
         ic = XHCIInputContext(slot_id, add_list=[0, 1])
         tr = XHCICycleRing(32)
@@ -763,9 +694,8 @@ class XHCI:
         self.set(self.dcbaa + slot_id, ic.dev.ctx)
         self.cr.address_device(slot_id, ic.ctx)
 
-        
-try:
-    xhci = XHCI(t)
-except:
-    pass
+
+if t.isrunning():
+    t.halt()    
+xhci = XHCI(t)
 
