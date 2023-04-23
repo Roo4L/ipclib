@@ -7,6 +7,9 @@ import time
 from usb import Data, HCI, usb_debug
 from xhci_rh import XHCIRootHub
 
+
+NUM_EPS=32
+
         
 class TRB(Data):
     PTR_LOW = 0
@@ -387,6 +390,7 @@ class XHCIDevice:
             addr = dma_align(64, self.NUM_EPS * 0x20, memset_value=0)
         self.ctx = addr
         self.slot = SlotContext(self.ctx)
+        self.transfer_rings = [None for i in xrange(NUM_EPS)]
         self.ep0 = EPContext(self.ctx + 0x20)
         self.eps = []
         for i in range(0x40, 0x40 + 0x20 * (self.NUM_EPS - 2), 0x20):
@@ -433,7 +437,7 @@ class XHCI(HCI):
     cr = None
     er = None
     ev_ring_table = None
-    devs = None
+    devs = None # type: List[XHCIDevice]
     transfer_rings = None
 
     def __init__(self, thread):
@@ -443,6 +447,7 @@ class XHCI(HCI):
         self.page_size = self.bar_read16(0x88).ToUInt32() << 12
         self.max_slots = self.bar_read32(0x4).ToUInt32() & 0xff
         self.max_ports = (self.bar_read32(0x4).ToUInt32() & 0xff000000) >> 24
+        self.devs = [None for i in xrange(self.max_slots)]
         usb_debug("caplen:  %s" % hex(self.bar_read16(0)))
         usb_debug("rtsoff:  %s" % hex(self.bar_read32(0x18)))
         usb_debug("dboff:   %s" % hex(self.bar_read32(0x14)))
@@ -688,9 +693,9 @@ class XHCI(HCI):
         ic.dev.ep0.set(EPContextBits.MPS, 8 if speed < 2 else (64 if speed < 4 else 512))
         ic.dev.ep0.set(EPContextBits.CERR, 3)
         ic.dev.ep0.set(EPContextBits.DCS, 1)
-        
-        self.devs[port] = XHCIDevice(slot_id)
-        self.transfer_rings[port] = tr
+
+        self.devs[slot_id] = XHCIDevice(slot_id)
+        self.devs[slot_id].transfer_rings[1] = tr
         self.set(self.dcbaa + slot_id, ic.dev.ctx)
         self.cr.address_device(slot_id, ic.ctx)
 
