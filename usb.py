@@ -195,7 +195,10 @@ class HCI:
     latest_address = None  # type: int
     devices = [None] * 128  # type: List['USBDevice']
 
-    instance = None  # type: Any
+    def init_device_entry(self, dev, i):
+        if self.devices[i] != None:
+            usb_debug("warning: device %d reassigned?\n" % i)
+        self.devices[i] = dev
 
     def start(self):
         # type: () -> None

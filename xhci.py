@@ -660,11 +660,6 @@ class XHCI(HCI):
 
         self.roothub = XHCIRootHub(self)
         self.init_device_entry(self.roothub, 0)
-    
-    def init_device_entry(self, dev, i):
-        if self.devs[i] != None:
-            usb_debug("warning: device %d reassigned?\n" % i)
-        self.devs[i] = dev
 
     def gen_route(self, port):
         return ipc.BitData(20, port & 0xf)
