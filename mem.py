@@ -187,9 +187,7 @@ def memdump_ds(addr, size=0x10):
     return t.memdump(ds.ToHex() + ":" + hex(addr), size, 1)
 
 def memset(addr, value, size):
-    t.memblock(phys(addr), int(size), 4, value)
-    #for i in range(0, size, 4):
-    #    t.mem(phys(addr + i), 4, value)
+    t.memblock(phys(addr), int(size), 1, value)
 
 def memtostr(addr, size):
     return "".join(map(chr, t.memblock(addr, size, 1).ToRawBytes()))
