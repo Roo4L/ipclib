@@ -183,6 +183,7 @@ class XHCICommandRing(XHCICycleRing):
         self.advance_enqueue_pointer()
 
     def wait_for_command(self, addr, clear_event):
+        usb_debug("wait_for_command: addr = %x" % addr)
         cc = xhci.er.wait_for_command_done(addr, clear_event)
         if cc is not None:
             return cc
@@ -213,6 +214,7 @@ class XHCICommandRing(XHCICycleRing):
         return None
             
     def address_device(self, slot_id, ic):
+        usb_debug("address_device: slot_id = %d" % slot_id)
         trb = self.next_command_trb(TRBType.CMD_ADDRESS_DEV)
         trb.set(TRBControlBits.ID, slot_id)
         trb.set(TRB.PTR_LOW, ic)
@@ -247,6 +249,10 @@ class XHCIEventRing(XHCICycleRing):
             if timeout == 0:
                 break
             trb = self.TRB()
+            usb_debug("Received event : %s, Completion Code: %s\n%s" % (
+                TRBType.name(trb.get(TRBControlBits.TT)),
+                TRBCompletionCode.name(trb.get(TRBStatusBits.CC)),
+                trb))
             if trb.get(TRBControlBits.TT) == tt:
                 break
             self.handle_event(trb)
@@ -261,7 +267,8 @@ class XHCIEventRing(XHCICycleRing):
     def handle_event(self, trb):
         tt = trb.get(TRBControlBits.TT)
         cc = trb.get(TRBStatusBits.CC)
-        usb_debug("Received event : %s, Completion Code: %s\n%s" % (TRBType.name(tt), TRBCompletionCode.name(cc), trb))
+        # usb_debug("Received event : %s, Completion Code: %s\n%s" % (TRBType.name(tt), TRBCompletionCode.name(cc), trb))
+        usb_debug("Handling unexpected event: %s" % TRBType.name(tt))
         if tt == TRBType.EV_CMD_CMPL:
             usb_debug("Warning: Spurious command completion event")
         elif tt == TRBType.EV_PORTSC:
