@@ -58,44 +58,63 @@ class XHCIRootHub(GenericHub, USBDevice):
         self.controller.bar_write32(0x480 + 0x10 * (port-1), new_portsc)
         return changed
     
+    def port_in_reset(self, port):
+        portsc = self.controller.bar_read32(0x480 + 0x10 * (port-1))
+        return bool(portsc & (1 << 4))
+    
+    # def reset_port(self, port):
+    #     portsc = self.controller.bar_read32(0x480 + 0x10 * (port-1))
+    #     pls = portsc[5:7]
+    #     if pls == 0:
+    #         # USB3 port, already reset
+    #         usb_debug("USB3 Port")
+    #     elif pls == 7:
+    #         # Initiate reset
+    #         portsc[4] = 1
+    #         self.controller.bar_write32(0x480 + 0x10 *(port-1), portsc)
+    #     else:
+    #         usb_debug("Unknown port state %s" % pls)
+        
+    #     timeout = 100    
+    #     while True:
+    #         portsc = self.controller.bar_read32(0x480 + 0x10 * (port-1))
+    #         if portsc[0] == 0:
+    #             usb_debug("Disconnected while resetting")
+    #             return -1
+    #         if portsc[1] == 1:
+    #             break
+    #         timeout -= 1
+    #         if timeout == 0:
+    #             usb_debug("Timeout on reset")
+    #             return -1
+    #         usleep(1)
+    #     # speed = portsc[10:12]
+    #     # XHCI_PORT_SPEEDS = {
+    #     #     0: " - ",
+    #     #     1: "Full",
+    #     #     2: "Low",
+    #     #     3: "High",
+    #     #     4: "Super"
+    #     # }
+    #     # usb_debug("Port %d reset. SC=%s - %s Speed" % (port, portsc, XHCI_PORT_SPEEDS.get(int(speed), "Super")))
+    #     usb_debug("Port %d reset. SC=%s" % (port, portsc))
+    #     return 0
+
     def reset_port(self, port):
         portsc = self.controller.bar_read32(0x480 + 0x10 * (port-1))
-        pls = portsc[5:7]
-        if pls == 0:
-            # USB3 port, already reset
-            usb_debug("USB3 Port")
-        elif pls == 7:
-            # Initiate reset
-            portsc[4] = 1
-            self.controller.bar_write32(0x480 + 0x10 *(port-1), portsc)
-        else:
-            usb_debug("Unknown port state %s" % pls)
-        
-        timeout = 100    
-        while True:
-            portsc = self.controller.bar_read32(0x480 + 0x10 * (port-1))
-            if portsc[0] == 0:
-                usb_debug("Disconnected while resetting")
-                return -1
-            if portsc[1] == 1:
-                break
-            timeout -= 1
-            if timeout == 0:
-                usb_debug("Timeout on reset")
-                return -1
-            usleep(1)
-        # speed = portsc[10:12]
-        # XHCI_PORT_SPEEDS = {
-        #     0: " - ",
-        #     1: "Full",
-        #     2: "Low",
-        #     3: "High",
-        #     4: "Super"
-        # }
-        # usb_debug("Port %d reset. SC=%s - %s Speed" % (port, portsc, XHCI_PORT_SPEEDS.get(int(speed), "Super")))
-        usb_debug("Port %d reset. SC=%s" % (port, portsc))
-        return 0
 
+        portsc = (portsc & ((1 << 4) | (((1 << (4)) - 1) << (5)) | (1 << 9) | (((1 << (2)) - 1) << (14)) | (1 << 16)
+ | (1 << 25) | (1 << 26) | (1 << 27))) | (1 << 4)
+        self.controller.bar_write32(0x480 + 0x10 * (port-1), portsc)
+
+        if not self.wait_for_port_in_reset(port, False, 150, 1000):
+            usb_debug("xhci_rh: Reset timed out at port %d" % port)
+        else:
+            usb_debug("Port %d reset." % (port))
+            portsc = self.controller.bar_read32(0x480 + 0x10 * (port-1))
+            portsc = (portsc & ((1 << 4) | (((1 << (4)) - 1) << (5)) | (1 << 9) | (((1 << (2)) - 1) << (14)) | (1 << 16)
+ | (1 << 25) | (1 << 26) | (1 << 27)) | (1 << 21) | (1 << 19))
+            self.controller.bar_write32(0x480 + 0x10 * (port-1), portsc)
 
     def check_ports(self):
         for i in range(self.num_ports):

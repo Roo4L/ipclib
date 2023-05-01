@@ -42,6 +42,15 @@ class GenericHub(USBDevice):
             usleep(step_us)
             timeout_steps -= 1
         return 0
+
+    def wait_for_port_in_reset(self, port, wait_for, timeout_steps, step_us):
+        while timeout_steps:
+            state = self.port_in_reset(port)
+            if bool(state) == wait_for:
+                return timeout_steps
+            usleep(step_us)
+            timeout_steps -= 1
+        return 0
     
     def debounce(self, port):
         step_ms = 1

@@ -896,9 +896,15 @@ class XHCI(HCI):
 
         self.devs[slot_id] = XHCIDevice(slot_id)
         self.devs[slot_id].transfer_rings[1] = tr
-        self.set(self.dcbaa + slot_id * 8, self.devs[slot_id].ctx)
-        usb_debug("dcbaa[%d] = %s" % 
-                  (slot_id, hex(t.memblock(phys(self.dcbaa + slot_id * 8), 1, 4))))
+        dcbaa_new = t.memblock(phys(self.dcbaa), (slot_id+1)*8, 1)
+        dcbaa_new[slot_id*8*8:(slot_id+1)*8*8-1] = self.devs[slot_id].ctx
+        usb_debug("dcbaa_new: %s" % dcbaa_new)
+        t.memblock(phys(self.dcbaa), (slot_id+1)*8, 1, dcbaa_new.ToRawBytes())
+        # self.set(self.dcbaa + slot_id * 8, self.devs[slot_id].ctx)
+        # usb_debug("dcbaa = %s" % hex(self.dcbaa))
+        # usb_debug("dcbaa: %s" % t.memblock(phys(self.dcbaa), (slot_id+1)*8, 1))
+        # usb_debug("dcbaa[%d] = %s" % 
+        #           (slot_id, t.memblock(phys(self.dcbaa + slot_id * 8), 1, 4)))
         usb_debug("Input Context:%s\n%s" % (hex(ic.ctx), ic))
         # usb_debug("xhci.devs[%d]:\n%s" % (slot_id, self.devs[slot_id]))
         usb_debug("before address_device:\n"
