@@ -94,15 +94,15 @@ class InterfaceDescriptor(Data):
         Data.__init__(self, 72, data)
 
 class InterfaceDescriptorBits:
-    bLength = [ConfigurationDescriptor.F1, 0, 8]
-    bDescriptorType = [ConfigurationDescriptor.F1, 8, 8]
-    bInterfaceNumber = [ConfigurationDescriptor.F1, 16, 8]
-    bAlternateSetting = [ConfigurationDescriptor.F1, 24, 8]
-    bNumEndpoints = [ConfigurationDescriptor.F2, 0, 8]
-    bInterfaceClass = [ConfigurationDescriptor.F2, 8, 8]
-    bInterfaceSubClass = [ConfigurationDescriptor.F2, 16, 8]
-    bInterfaceProtocol = [ConfigurationDescriptor.F2, 24, 8]
-    iInterface = [ConfigurationDescriptor.F3, 0, 8]
+    bLength = [InterfaceDescriptor.F1, 0, 8]
+    bDescriptorType = [InterfaceDescriptor.F1, 8, 8]
+    bInterfaceNumber = [InterfaceDescriptor.F1, 16, 8]
+    bAlternateSetting = [InterfaceDescriptor.F1, 24, 8]
+    bNumEndpoints = [InterfaceDescriptor.F2, 0, 8]
+    bInterfaceClass = [InterfaceDescriptor.F2, 8, 8]
+    bInterfaceSubClass = [InterfaceDescriptor.F2, 16, 8]
+    bInterfaceProtocol = [InterfaceDescriptor.F2, 24, 8]
+    iInterface = [InterfaceDescriptor.F3, 0, 8]
 
 class EndpointDescriptor(Data):
     F1 = 0
@@ -112,12 +112,12 @@ class EndpointDescriptor(Data):
         Data.__init__(self, 56, data)
 
 class EndpointDescriptorBits:
-    bLength = [ConfigurationDescriptor.F1, 0, 8]
-    bDescriptorType = [ConfigurationDescriptor.F1, 8, 8]
-    bEndpointAddress = [ConfigurationDescriptor.F1, 16, 8]
-    bmAttributes = [ConfigurationDescriptor.F1, 24, 8]
-    wMaxPacketSize = [ConfigurationDescriptor.F2, 0, 16]
-    bInterval = [ConfigurationDescriptor.F2, 16, 8]
+    bLength = [EndpointDescriptor.F1, 0, 8]
+    bDescriptorType = [EndpointDescriptor.F1, 8, 8]
+    bEndpointAddress = [EndpointDescriptor.F1, 16, 8]
+    bmAttributes = [EndpointDescriptor.F1, 24, 8]
+    wMaxPacketSize = [EndpointDescriptor.F2, 0, 16]
+    bInterval = [EndpointDescriptor.F2, 16, 8]
 
 
 class DeviceClass:
@@ -143,12 +143,32 @@ class Direction:
     IN = 1
     OUT = 2
 
+    @staticmethod
+    def name(value):
+        types = Direction.__dict__
+        for key in types.keys():
+            if key.startswith("__"):
+                continue
+            if types[key] == value:
+                return key
+        return "UNKNOWN"
+
 
 class EndpointType:
     CONTROL = 0
     ISOCHRONOUS = 1
     BULK = 2
     INTERRUPT = 3
+
+    @staticmethod
+    def name(value):
+        types = EndpointType.__dict__
+        for key in types.keys():
+            if key.startswith("__"):
+                continue
+            if types[key] == value:
+                return key
+        return "UNKNOWN"
 
 
 class Endpoint:
@@ -169,8 +189,17 @@ class Endpoint:
         self.toggle = toggle
         self.direction = direction
         self.eptype = eptype
-
-
+    
+    def __repr__(self):
+        return ("Endpoint: {}\n"
+                "dir: {}\n"
+                "type: {}\n"
+                "mps: {}\n"
+                .format(self.endpoint,
+                        Direction.name(self.direction),
+                        EndpointType.name(self.eptype),
+                        self.maxpacketsize))
+        
 class bRequestCodes:
 	GET_STATUS = 0
 	CLEAR_FEATURE = 1
@@ -328,20 +357,44 @@ def usb_set_address(controller, speed, hubport, hubaddr):
     if not dev:
         usb_debug("set_address failed")
         return -1
+    
+    usb_debug("set address succeed\n"
+              "dev:\n"
+              "  hubport: {}\n"
+              "  hubaddr: {}\n"
+              "  address: {}\n"
+              "  speed: {}\n"
+              "  EP0: {}\n"
+              .format(dev.port,
+                      dev.hub,
+                      dev.address,
+                      dev.speed,
+                      dev.endpoints[0]))
 
     dev.descriptor = DeviceDescriptor()
-    data, transfered = dev.get_descriptor(DR_DESC(), DT.DEV, 0, dev.descriptor, 144)
-    if transfered != 144:
-        usb_debug("get_descriptor(DT_DEV) failed")
-        # usb_detach_device(controller, dev.address)
-        return -1
-    dev.descriptor.data = data
+    # data, transfered = dev.get_descriptor(DR_DESC(), DT.DEV, 0, dev.descriptor, 144/8)
+    # if transfered != 144:
+    #     usb_debug("get_descriptor(DT_DEV) failed")
+    #     # usb_detach_device(controller, dev.address)
+    #     return -1
+    # dev.descriptor.data = data
+    # Hardcoded for arduino nano device
+    dev.descriptor.set(DeviceDescriptorBits.bLength, 18)
+    dev.descriptor.set(DeviceDescriptorBits.bDescriptorType, 1)
+    dev.descriptor.set(DeviceDescriptorBits.bcdUSB, 0x0110)
+    dev.descriptor.set(DeviceDescriptorBits.bDeviceClass, 255)
+    dev.descriptor.set(DeviceDescriptorBits.bMaxPacketSize0, 8)
+    dev.descriptor.set(DeviceDescriptorBits.idVendor, 0x1a86)
+    dev.descriptor.set(DeviceDescriptorBits.idProduct, 0x7523)
+    dev.descriptor.set(DeviceDescriptorBits.bcdDevice, 0x0254)
+    dev.descriptor.set(DeviceDescriptorBits.iProduct, 2)
+    dev.descriptor.set(DeviceDescriptorBits.bNumConfigurations, 1)
 
     usb_debug("* found device (0x%04x:0x%04x, USB %x.%x, MPS0: %d)" % (
               dev.descriptor.get(DeviceDescriptorBits.idVendor),
               dev.descriptor.get(DeviceDescriptorBits.idProduct),
               dev.descriptor.get(DeviceDescriptorBits.bcdUSB) >> 8,
-              dev.descriptor.get(DeviceDescriptorBits.idVendor) & 0xFF,
+              dev.descriptor.get(DeviceDescriptorBits.bcdUSB) & 0xFF,
               dev.endpoints[0].maxpacketsize))
 
     # dev->quirks = usb_quirk_check(dev->descriptor->idVendor,
@@ -354,26 +407,37 @@ def usb_set_address(controller, speed, hubport, hubaddr):
         # usb_detach_device(controller, device.address)
         return -1
     
-    buf = ipc.BitData(32, 0)
-    buf, transfered = dev.get_descriptor(DR_DESC, DT.CFG, 0, buf, 32 / 8)
-    if transfered != 32 / 8:
-        usb_debug("first get_descriptor(DT_CFG) failed")
-        # usb_detach_device(controller, device.address)
-        return -1
+    # buf = ipc.BitData(32, 0)
+    # buf, transfered = dev.get_descriptor(DR_DESC, DT.CFG, 0, buf, 32 / 8)
+    # if transfered != 32 / 8:
+    #     usb_debug("first get_descriptor(DT_CFG) failed")
+    #     # usb_detach_device(controller, device.address)
+    #     return -1
     
-    usleep(1 * 1000)
+    # usleep(1 * 1000)
     
-    configuration_len = buf.ReadByteArray()[1]
-    dev.configuration = ipc.BitData(configuration_len * 8, 0)
-    dev.configuration, transfered = dev.get_descriptor(DR_DESC, DT.CFG, 0,
-                                                       dev.configuration, configuration_len)
-    if transfered != configuration_len:
-        usb_debug("get_descriptor(DT_CFG) failed")
-        # usb_detach_device(controller, device.address)
-        return -1
+    # configuration_len = buf.ReadByteArray()[1]
+    configuration_len = 0x027
+    dev.configuration = ConfigurationDescriptor()
+    # dev.configuration, transfered = dev.get_descriptor(DR_DESC, DT.CFG, 0,
+    #                                                    dev.configuration, configuration_len)
+    # if transfered != configuration_len:
+    #     usb_debug("get_descriptor(DT_CFG) failed")
+    #     # usb_detach_device(controller, device.address)
+    #     return -1
 
-    cd = ConfigurationDescriptor()
-    cd.data = dev.configuration
+    dev.configuration.set(ConfigurationDescriptorBits.bLength, 9)
+    dev.configuration.set(ConfigurationDescriptorBits.bDescriptorType, 2)
+    dev.configuration.set(ConfigurationDescriptorBits.wTotalLength, 0x0027)
+    dev.configuration.set(ConfigurationDescriptorBits.bNumInterfaces, 1)
+    dev.configuration.set(ConfigurationDescriptorBits.bConfigurationValue, 1)
+    dev.configuration.set(ConfigurationDescriptorBits.bmAttributes, 0x80)
+    dev.configuration.set(ConfigurationDescriptorBits.bMaxPower, 48)
+
+    # cd = ConfigurationDescriptor()
+    # cd.data = dev.configuration
+
+    cd = dev.configuration
 
     if cd.get(ConfigurationDescriptorBits.wTotalLength) != configuration_len:
         usb_debug("configuration descriptor size changed, aborting")
@@ -393,81 +457,109 @@ def usb_set_address(controller, speed, hubport, hubaddr):
             "coreboot@coreboot.org to have the device added to\n"
             "the list of well-known quirks.");
 
-    config_array = dev.configuration.ReadByteArray()
-    end = cd.get(ConfigurationDescriptorBits.wTotalLength)
-    intf = InterfaceDescriptor()
-    ptr = len(cd)
-    while True:
-        if (ptr + 2 > end or not config_array[ptr]
-            or (ptr + config_array[ptr]) > end):
-            usb_debug("Couldn't find usable DT_INTF")
-            # usb_detach_device(controller, dev.address)
-            return -1
+    # config_array = dev.configuration.ReadByteArray()
+    # end = cd.get(ConfigurationDescriptorBits.wTotalLength)
+    # intf = InterfaceDescriptor()
+    # ptr = len(cd)
+    # while True:
+    #     if (ptr + 2 > end or not config_array[ptr]
+    #         or (ptr + config_array[ptr]) > end):
+    #         usb_debug("Couldn't find usable DT_INTF")
+    #         # usb_detach_device(controller, dev.address)
+    #         return -1
 
-        if config_array[ptr + 1] != DT.INTF:
-            ptr += config_array[ptr]
-            continue
+    #     if config_array[ptr + 1] != DT.INTF:
+    #         ptr += config_array[ptr]
+    #         continue
 
-        intf.data = dev.configuration[ptr*8:ptr*8+72]
-        if intf.get(InterfaceDescriptorBits.bLength) != 72 / 8:
-            usb_debug("Skipping broken DT_INTF")
-            ptr += config_array[ptr]
-            continue
+    #     intf.data = dev.configuration[ptr*8:ptr*8+72]
+    #     if intf.get(InterfaceDescriptorBits.bLength) != 72 / 8:
+    #         usb_debug("Skipping broken DT_INTF")
+    #         ptr += config_array[ptr]
+    #         continue
 
-        if ifnum >= 0 and intf.get(InterfaceDescriptorBits.bInterfaceNumber != ifnum):
-            ptr += config_array[ptr]
-            continue
+    #     if ifnum >= 0 and intf.get(InterfaceDescriptorBits.bInterfaceNumber != ifnum):
+    #         ptr += config_array[ptr]
+    #         continue
 
-        usb_debug("Interface %d: class 0x%x, sub 0x%x. proto 0x%x" % (
-			intf.get(InterfaceDescriptorBits.bInterfaceNumber),
-            intf.get(InterfaceDescriptorBits.bInterfaceClass),
-            intf.get(InterfaceDescriptorBits.bInterfaceSubClass),
-            intf.get(InterfaceDescriptorBits.bInterfaceProtocol)))
-        ptr += 72/8
-        break
+    #     usb_debug("Interface %d: class 0x%x, sub 0x%x. proto 0x%x" % (
+	# 		intf.get(InterfaceDescriptorBits.bInterfaceNumber),
+    #         intf.get(InterfaceDescriptorBits.bInterfaceClass),
+    #         intf.get(InterfaceDescriptorBits.bInterfaceSubClass),
+    #         intf.get(InterfaceDescriptorBits.bInterfaceProtocol)))
+    #     ptr += 72/8
+    #     break
 
-    dev.num_endp = 1
-    while ((ptr + 2 <= end) and config_array[ptr]
-           and (ptr + config_array[ptr] <= end)):
-        if (config_array[ptr + 1] == DT.INTF
-            or config_array[ptr + 1] == DT.CFG
-            or dev.num_endp >= len(dev.endpoints)):
-            break;
+    dev.num_endp = 4
 
-        if (config_array[ptr + 1] != DT.ENDP):
-            ptr += config_array[ptr]
-            continue
+    # while ((ptr + 2 <= end) and config_array[ptr]
+    #        and (ptr + config_array[ptr] <= end)):
+    #     if (config_array[ptr + 1] == DT.INTF
+    #         or config_array[ptr + 1] == DT.CFG
+    #         or dev.num_endp >= len(dev.endpoints)):
+    #         break;
 
-        desc = EndpointDescriptor()
-        desc.data = dev.configuration[ptr*8:ptr*8+len(desc.data)]
-        transfertypes = [ "control", "isochronous", "bulk", "interrupt"]
-        usb_debug(" #Endpoint %d (%s), max packet size %x, type %s" % (
-            desc.get(EndpointDescriptorBits.EnbEndpointAddress) & 0x7f,
-            "in" if (desc.get(EndpointDescriptorBits.bEndpointAddress) & 0x80) else "out",
-            desc.get(EndpointDescriptorBits.wMaxPacketSize),
-            transfertypes[desc.get(EndpointDescriptorBits.bmAttributes) & 0x3]))
+    #     if (config_array[ptr + 1] != DT.ENDP):
+    #         ptr += config_array[ptr]
+    #         continue
+
+    #     desc = EndpointDescriptor()
+    #     desc.data = dev.configuration[ptr*8:ptr*8+len(desc.data)]
+    #     transfertypes = [ "control", "isochronous", "bulk", "interrupt"]
+    #     usb_debug(" #Endpoint %d (%s), max packet size %x, type %s" % (
+    #         desc.get(EndpointDescriptorBits.EnbEndpointAddress) & 0x7f,
+    #         "in" if (desc.get(EndpointDescriptorBits.bEndpointAddress) & 0x80) else "out",
+    #         desc.get(EndpointDescriptorBits.wMaxPacketSize),
+    #         transfertypes[desc.get(EndpointDescriptorBits.bmAttributes) & 0x3]))
         
-        ep = Endpoint(dev,
-                      desc.get(EndpointDescriptorBits.bEndpointAddress),
-                      0,
-                      Direction.IN if (desc.get(EndpointDescriptorBits.bEndpointAddress) & 0x80) else Direction.OUT,
-                      desc.get(EndpointDescriptorBits.bmAttributes) & 0x3
-                      )
-        ep.maxpacketsize = desc.get(EndpointDescriptorBits.wMaxPacketSize)
-        ep.interval = usb_decode_interval(dev.speed, ep.type,
-                            desc.get(EndpointDescriptorBits.bInterval))
-        dev.endpoints[dev.num_endp] = ep
-        dev.num_endp += 1
-        ptr += config_array[ptr]
+    #     ep = Endpoint(dev,
+    #                   desc.get(EndpointDescriptorBits.bEndpointAddress),
+    #                   0,
+    #                   Direction.IN if (desc.get(EndpointDescriptorBits.bEndpointAddress) & 0x80) else Direction.OUT,
+    #                   desc.get(EndpointDescriptorBits.bmAttributes) & 0x3
+    #                   )
+    #     ep.maxpacketsize = desc.get(EndpointDescriptorBits.wMaxPacketSize)
+    #     ep.interval = usb_decode_interval(dev.speed, ep.type,
+    #                         desc.get(EndpointDescriptorBits.bInterval))
+    #     dev.endpoints[dev.num_endp] = ep
+    #     dev.num_endp += 1
+    #     ptr += config_array[ptr]
+
+    ep1 = Endpoint(dev,
+                  0x82,
+                  0,
+                  Direction.IN,
+                  2)
+    ep1.maxpacketsize = 0x20
+    ep1.interval = 0
+    dev.endpoints[1] = ep1
+
+    ep2 = Endpoint(dev,
+                  0x02,
+                  0,
+                  Direction.OUT,
+                  2)
+    ep2.maxpacketsize = 0x20
+    ep2.interval = 0
+    dev.endpoints[2] = ep2
+
+    ep3 = Endpoint(dev,
+                  0x81,
+                  0,
+                  Direction.IN,
+                  3)
+    ep3.maxpacketsize = 0x8
+    ep3.interval = 1
+    dev.endpoints[3] = ep3
     
-    if controller.finish_device_config() or set_configuration(dev) < 0:
-        usb_debug("Could not finalize device configuration")
+    if controller.finish_device_config(dev) or set_configuration(dev) < 0:
+        raise Exception("Could not finalize device configuration")
         # usb_detach_device(controller, dev.address)
         return -1
     
     class_id = dev.descriptor.get(DeviceDescriptorBits.bDeviceClass)
-    if class_id == 0:
-        class_id = intf.get(InterfaceDescriptorBits.bInterfaceClass)
+    # if class_id == 0:
+    #     class_id = intf.get(InterfaceDescriptorBits.bInterfaceClass)
     
     usb_debug("Class: %d" % class_id)
     return dev.address
@@ -512,6 +604,16 @@ class USBSpeed:
     HIGH_SPEED = 2
     SUPER_SPEED = 3
     SUPER_SPEED_PLUS = 4
+
+    @staticmethod
+    def name(value):
+        types = USBSpeed.__dict__
+        for key in types.keys():
+            if key.startswith("__"):
+                continue
+            if types[key] == value:
+                return key
+        return "UNKNOWN"
 
 
 def usb_decode_mps0(speed, mps0):

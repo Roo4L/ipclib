@@ -190,7 +190,7 @@ def memset(addr, value, size):
     t.memblock(phys(addr), int(size), 1, value)
 
 def memcpy(addr, value, size):
-    t.memblock(phys(addr), int(size), 1, value.ReadByteArray())
+    t.memblock(phys(addr), int(size), 1, value.ToRawBytes())
 
 def memtostr(addr, size):
     return "".join(map(chr, t.memblock(addr, size, 1).ToRawBytes()))

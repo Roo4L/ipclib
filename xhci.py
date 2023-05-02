@@ -314,6 +314,21 @@ class XHCICommandRing(XHCICycleRing):
             "%s" % (hex(cmd), trb))
         return self.wait_for_command(cmd, True)
 
+    def configure_endpoint(self, slot_id, config_id, ic):
+        trb = self.next_command_trb(TRBType.CMD_CONFIGURE_EP)
+        trb.set(TRBControlBits.ID, slot_id)
+        trb.set(TRB.PTR_LOW, ic.ctx)
+        if config_id == 0:
+            trb.set(TRBControlBits.DC, 1)
+        trb.write(self.current)
+        cmd = self.current
+        self.post_command()
+        trb.read(cmd)
+        usb_debug("Waiting for command: %s\n"
+            "%s" % (hex(cmd), trb))
+        return self.wait_for_command(cmd, True)
+
+
 class XHCIEventRing(XHCICycleRing):
 
     def reset(self):
@@ -349,8 +364,11 @@ class XHCIEventRing(XHCICycleRing):
                 TRBType.name(trb.get(TRBControlBits.TT)),
                 TRBCompletionCode.name(trb.get(TRBStatusBits.CC)),
                 trb))
+            # usb_debug("tt = {}".format(tt))
+            # usb_debug("TRBControlBits.TT = {}".format(trb.get(TRBControlBits.TT)))
             if trb.get(TRBControlBits.TT) == tt:
                 break
+            # usb_debug("handle_event in wait_for_event_type")
             self.handle_event(trb)
         return timeout
 
@@ -480,8 +498,20 @@ class SlotContext(Data):
     F4 = 96
     RSVD = 128
 
-    def __init__(self, addr=None):
+    def __init__(self, addr):
         Data.__init__(self, 0x20 * 8, addr=addr)
+    
+    def __repr__(self):
+        return "Slot : {}\n" \
+            "  F1: {}\n" \
+            "  F2: {}\n" \
+            "  F3: {}\n" \
+            "  F4: {}\n" \
+            .format(self.addr,
+                    self.get(self.F1),
+                    self.get(self.F2),
+                    self.get(self.F3),
+                    self.get(self.F4))
 
 class SlotContextBits:
     ROUTE = [SlotContext.F1, 0, 20] # ROUTE - Route String
@@ -506,8 +536,22 @@ class EPContext(Data):
     RSVD0 = 160
     RSVD1_3 = 192
 
-    def __init__(self, addr=None):
+    def __init__(self, addr):
         Data.__init__(self, 0x20 * 8, addr=addr)
+    
+    def __repr__(self):
+        return "EP: {}\n" \
+            "  F1: {}\n" \
+            "  F2: {}\n" \
+            "  TR_DQ_LOW: {}\n" \
+            "  TR_DQ_HIGH: {}\n" \
+            "  F5: {}\n" \
+            .format(self.addr,
+                    self.get(self.F1),
+                    self.get(self.F2),
+                    self.get(self.TR_DQ_LOW),
+                    self.get(self.TR_DQ_HIGH),
+                    self.get(self.F5))
 
 
 class EPContextBits:
@@ -543,7 +587,7 @@ class XHCIDevice:
         self.interrupt_queues = [None for i in xrange(NUM_EPS)]
         self.ep0 = EPContext(self.ctx + 0x20)
         self.eps = []
-        for i in range(0x40, 0x40 + 0x20 * (NUM_EPS - 2), 0x20):
+        for i in range(0x00, 0x20 * (NUM_EPS), 0x20):
             self.eps.append(EPContext(self.ctx + i))
 
     def __getitem__(self, idx):
@@ -552,16 +596,22 @@ class XHCIDevice:
         return self.ctx + int(idx) * 0x20
     
     def __repr__(self):
-        return ("Slot: %s\n"
+        return ("%s\n"
                 "EP0: %s\n"
-                "EP1-30: %s\n" % (
-                    t.memblock(phys(self.ctx), 0x20, 1),
-                    t.memblock(phys(self.ep0.addr), 0x20, 1),
-                    t.memblock(phys(self.ctx + 0x40), 0x20 * (NUM_EPS-2), 1))
+                "EP1 IN: %s\n"
+                "EP2 OUT: %s\n"
+                "EP2 IN: %s\n" % (
+                    self.slot,
+                    self.ep0,
+                    self.eps[3],
+                    self.eps[4],
+                    self.eps[5])
                 )
 
     def doorbell(self, value=0):
-        xhci.bar_write32(0x3000 + 4 * self.slot_id, value)
+        usb_debug("Ringing doorbel for slot {} with DT = {}".
+                  format(self.slot_id, value))
+        xhci.bar_write32(0x3000 + 4 * int(self.slot_id), value)
         
 class XHCIInputContext:
     def __init__(self, slot_id, add_list=[], drop_list=[]):
@@ -863,7 +913,9 @@ class XHCI(HCI):
         cc, slot_id = self.cr.enable_slot()
         if cc != TRBCompletionCode.SUCCESS:
             raise Exception("Slot Enable command failed. CC = %s" % TRBCompletionCode.name(cc))
-            
+        
+        slot_id = int(slot_id)
+        
         ic = XHCIInputContext(slot_id, add_list=[0, 1])
         tr = XHCICycleRing(32)
         
@@ -905,43 +957,47 @@ class XHCI(HCI):
         # usb_debug("dcbaa: %s" % t.memblock(phys(self.dcbaa), (slot_id+1)*8, 1))
         # usb_debug("dcbaa[%d] = %s" % 
         #           (slot_id, t.memblock(phys(self.dcbaa + slot_id * 8), 1, 4)))
-        usb_debug("Input Context:%s\n%s" % (hex(ic.ctx), ic))
+        #  usb_debug("Input Context:%s\n%s" % (hex(ic.ctx), ic))
         # usb_debug("xhci.devs[%d]:\n%s" % (slot_id, self.devs[slot_id]))
-        usb_debug("before address_device:\n"
-                  "xhci.devs[%d]: %s\n%s" % 
-            (slot_id, 
-            hex(self.devs[slot_id].ctx),
-            self.devs[slot_id]))
+        # usb_debug("before address_device:\n"
+        #           "xhci.devs[%d]: %s\n%s" % 
+        #     (slot_id, 
+        #     hex(self.devs[slot_id].ctx),
+        #     self.devs[slot_id]))
         cc = self.cr.address_device(slot_id, ic.ctx)
         if cc != 1:
             raise Exception("Address device failed: %d" % cc)
         usleep(6*1000)
 
-        usb_debug("after address_device:\n"
-                  "xhci.devs[%d]: %s\n%s" % 
-            (slot_id, 
-            hex(self.devs[slot_id].ctx),
-            self.devs[slot_id]))
+        usb_debug("Address device succeed")
+
+        # usb_debug("after address_device:\n"
+        #           "xhci.devs[%d]: %s\n%s" % 
+        #     (slot_id, 
+        #     hex(self.devs[slot_id].ctx),
+        #     self.devs[slot_id]))
         # usb_debug("dcbaa[%d] = %s" %
         #           (slot_id, hex(t.memblock(phys(self.dcbaa + slot_id*8), 4, 1))))
-        newdev = USBDevice(self, slot_id, hubaddr, port)
+        newdev = USBDevice(self, int(slot_id), hubaddr, port)
         newdev.speed = speed
         newdev.endpoints[0] = Endpoint(newdev, 0, 0, Direction.SETUP, EndpointType.CONTROL)
         # TODO: initialize device remaining fields
         self.init_device_entry(newdev, slot_id)
-        buf = ipc.BitData(8*8, 0)
-        buf, transfered = newdev.get_descriptor(gen_bmRequestType(
-                                    DevReqDir.device_to_host,
-                                    DevReqType.standard_type,
-                                    DevReqRecp.dev_recp),
-                               DT.DEV, 0, buf, len(buf)/8
-                            )
-        if transfered != len(buf)/8:
-            raise Exception("first get_descriptor(DT_DEV) failed")
+        # buf = ipc.BitData(8*8, 0)
+        # buf, transfered = newdev.get_descriptor(gen_bmRequestType(
+        #                             DevReqDir.device_to_host,
+        #                             DevReqType.standard_type,
+        #                             DevReqRecp.dev_recp),
+        #                        DT.DEV, 0, buf, len(buf)/8
+        #                     )
+        # if transfered != len(buf)/8:
+        #     raise Exception("first get_descriptor(DT_DEV) failed")
         
-        newdev.endpoints[0].maxpacketsize = usb_decode_mps0(speed, buf[56:])
-        if newdev.endpoints[0].maxpacketsize != speed_to_default_mps(speed):
-            raise Exception("Set specific MPS")
+        # newdev.endpoints[0].maxpacketsize = usb_decode_mps0(speed, buf[56:])
+        newdev.endpoints[0].maxpacketsize = 8
+
+        # if newdev.endpoints[0].maxpacketsize != speed_to_default_mps(speed):
+        #     raise Exception("Set specific MPS")
         return newdev
 
     def control(self, dev, dir, devreq, data_len, src):
@@ -953,6 +1009,8 @@ class XHCI(HCI):
                    self.devs[dev.address]))
         epctx = self.devs[dev.address].ep0
         tr = self.devs[dev.address].transfer_rings[1]
+
+        # usb_debug("Transfer ring: {}".format(hex(tr.ring)))
 
         # const size_t off = (size_t)data & 0xffff;
 	    # if ((off + dalen) > ((TRANSFER_RING_SIZE - 4) << 16)) {
@@ -981,13 +1039,15 @@ class XHCI(HCI):
         setup.set(TRBControlBits.TRT, trt)
         setup.set(TRBControlBits.TT, TRBType.SETUP_STAGE)
         setup.set(TRBControlBits.IDT, 1)
-        # setup.set(TRBControlBits.IOC, 1)
+        setup.set(TRBControlBits.IOC, 1)
         setup.write(tr.current)
         tr.enqueue_trb()
 
         if data_len:
-            usb_debug("dcbaa[%d] = %s" %
-                    (dev.address, hex(t.memblock(phys(self.dcbaa + dev.address*8), 4, 1))))
+            # usb_debug("dcbaa: = %s" %
+            #         (dev.address, hex(t.memblock(phys(self.dcbaa + dev.address*8), 4, 1))))
+            dcbaa = t.memblock(phys(self.dcbaa), (dev.address+1)*8, 1)
+            usb_debug("dcbaa: %s" % dcbaa)
             mps = epctx.get(EPContextBits.MPS)
             if not mps:
                 # A workaround for the case when get_descriptor request is issued
@@ -1035,23 +1095,104 @@ class XHCI(HCI):
             timeout_us = self.er.wait_for_event_type(TRBType.EV_TRANSFER, timeout_us)
             if not timeout_us:
                 break
-            trb = self.cr.TRB()
+            trb = self.er.TRB()
             if (trb.get(TRBControlBits.ID) == slot_id and
                 trb.get(TRBControlBits.EP) == ep_id):
                 usb_debug("received transfere event for ID %d EP %d" % (slot_id, ep_id))
-                ret = -trb.get(TRBStatusBits.CC)
-                if (ret == -TRBCompletionCode.SUCCESS
-                    or ret == -TRBCompletionCode.SHORT_PACKET):
-                    ret = trb.get(TRBStatusBits.EVTL)
+                ret = -int(trb.get(TRBStatusBits.CC))
+                if (ret == -int(TRBCompletionCode.SUCCESS)
+                    or ret == -int(TRBCompletionCode.SHORT_PACKET)):
+                    ret = int(trb.get(TRBStatusBits.EVTL))
                 usb_debug("wait_for_transfer::ret = %d" % ret)
                 self.er.advance_dequeue_pointer()
                 break
-            self.er.handle_event()
+            usb_debug("handle_event in wait_for_transfer")
+            self.er.handle_event(trb)
         if (not timeout_us):
             usb_debug("Warning: Timed out waiting for TRB_EV_TRANSFER.")
         self.er.update_event_dq()
         return ret
 
+    def bound_interval(self, ep):
+        # Hardcoded for FS device
+        if ep.eptype == EndpointType.INTERRUPT:
+            if ep.interval < 3:
+                return 3
+            elif ep.interval > 11:
+                return 11
+            else:
+                ep.interval
+        else:
+            if ep.interval < 0:
+                return 0
+            elif ep.interval > 15:
+                return 15
+            else:
+                ep.interval
+
+
+    def finish_ep_config(self, ep, ic):
+        ep_id = eval_ep_id(ep)
+        usb_debug("ep_id: {}".format(ep_id))
+
+        if (ep_id <=1 or ep_id >= 32):
+            raise Exception("ep_id out of bounds")
+        
+        tr = XHCICycleRing(32)
+        self.devs[ep.dev.address].transfer_rings[ep_id] = tr
+        # set add list
+        add = t.mem(phys(ic.ctx + 4), 4)
+        add |= (1 << ep_id)
+        t.mem(phys(ic.ctx + 4), 4, add)
+
+        if ic.dev.slot.get(SlotContextBits.CTXENT) < ep_id:
+            ic.dev.slot.set(SlotContextBits.CTXENT, ep_id)
+        
+        ic.dev.eps[ep_id].set(EPContext.TR_DQ_LOW, tr.ring)
+        ic.dev.eps[ep_id].set(EPContext.TR_DQ_HIGH, 0)
+        ic.dev.eps[ep_id].set(EPContextBits.INTVAL, self.bound_interval(ep))
+        ic.dev.eps[ep_id].set(EPContextBits.CERR, 3)
+        ic.dev.eps[ep_id].set(EPContextBits.TYPE, ep.eptype | ((ep.direction != Direction.OUT) << 2))
+        ic.dev.eps[ep_id].set(EPContextBits.MPS, ep.maxpacketsize)
+        ic.dev.eps[ep_id].set(EPContextBits.DCS, 1)
+
+        if (ep.eptype == EndpointType.BULK or
+            ep.eptype == EndpointType.ISOCHRONOUS):
+            avrtrb = 3 * 1024
+        elif ep.eptype == EndpointType.INTERRUPT:
+            avrtrb = 1024
+        else:
+            avrtrb = 8
+        
+        ic.dev.eps[ep_id].set(EPContextBits.AVRTRB, avrtrb)
+        ic.dev.eps[ep_id].set(EPContextBits.MXESIT,
+                              ic.dev.eps[ep_id].get(EPContextBits.MPS) * ic.dev.eps[ep_id].get(EPContextBits.MBS))
+        return ic
+
+
+    def finish_device_config(self, dev):
+        slot_id = dev.address
+        di = self.devs[slot_id]
+
+        ic = XHCIInputContext(slot_id, [0])
+        ic.dev.slot.set(SlotContext.F1, di.slot.get(SlotContext.F1))
+        ic.dev.slot.set(SlotContext.F2, di.slot.get(SlotContext.F2))
+        ic.dev.slot.set(SlotContext.F3, di.slot.get(SlotContext.F3))
+        for i in xrange(1, dev.num_endp):
+            ic = self.finish_ep_config(dev.endpoints[i], ic)
+
+        config_id = dev.configuration.get(ConfigurationDescriptorBits.bConfigurationValue)
+        usb_debug("config_id: {}".format(int(config_id)))
+        cc = self.cr.configure_endpoint(slot_id, config_id, ic)
+        if (cc != TRBCompletionCode.SUCCESS):
+            raise Exception("configure endpoint failed")
+
+        usb_debug("Endpoints configured")
+
+
+def eval_ep_id(ep):
+    # type: ('Endpoint') -> int
+    return int((ep.endpoint & 0x7F) * 2) + (ep.direction != Direction.OUT)
 
 if t.isrunning():
     t.halt()    

@@ -117,7 +117,8 @@ class GenericHub(USBDevice):
         #     hub->ops->hub_status_changed(dev) != 1) {
         #     return;
         # }
-        for port in xrange(1, self.num_ports + 1):
-            if self.port_status_changed(port):
-                usb_debug("generic_hub: Port change at %d" % port)
-                self.scanport(port)
+        # for port in xrange(1, self.num_ports + 1):
+        port = 1 # Poll only first port to scan for arduino
+        if self.port_status_changed(port):
+            usb_debug("generic_hub: Port change at %d" % port)
+            self.scanport(port)
