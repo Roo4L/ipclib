@@ -5,6 +5,8 @@ from asm import *
 from pci import *
 from mmio import *
 from xhci import *
+from ch341 import *
+from serial import *
 
 try:
     t.halt()

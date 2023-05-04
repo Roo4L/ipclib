@@ -12,6 +12,8 @@ NUM_EPS=32
 
 TIMEOUT = -65
 
+URB_ZERO_PACKET = 0x0040
+
         
 class TRB(Data):
     PTR_LOW = 0
@@ -1076,14 +1078,14 @@ class XHCI(HCI):
             ret = self.wait_for_transfer(dev.address, 1)
             transferred += ret
             if (ret < 0):
-                raise("Stage %d/%d failed: %d\n" % (i, n_stages, ret))
+                raise Exception("Stage %d/%d failed: %d\n" % (i, n_stages, ret))
                 # if ret == TIMEOUT:
                 #     usb_debug("Stopping ID %d EP 1\n" % dev.address)
                 #     self.cmd_stop_endpoint(dev.address, 1)
                 # return ret
         
         if data_len and dir == Direction.IN:
-            src = t.memblock(data, transferred, 1);
+            src = t.memblock(phys(data), transferred, 1)
         return src, transferred
     
     def wait_for_transfer(self, slot_id, ep_id):
@@ -1188,6 +1190,69 @@ class XHCI(HCI):
             raise Exception("configure endpoint failed")
 
         usb_debug("Endpoints configured")
+    
+    def bulk(self, ep, size, src):
+        # type: ('Endpoint', int, ipc.BitData) -> None
+        slot_id = ep.dev.address
+        ep_id = eval_ep_id(ep)
+        epctx = self.devs[slot_id].eps[ep_id]
+        tr = self.devs[slot_id].transfer_rings[ep_id]
+
+        if size:
+            data = self.dma_buffer
+            if ep.direction == Direction.OUT:
+                memcpy(data, src, size)
+        
+        ep_state = epctx.get(EPContextBits.STATE)
+        if ep_state > 1:
+            raise Exception("Endpoint %d not running" % ep_id)
+        
+        mps = int(epctx.get(EPContextBits.MPS))
+        dir = TRBDirection.OUT if ep.direction == Direction.OUT else TRBDirection.IN
+        tr.enqueue_td(ep_id, mps, size, data, dir)
+        self.ring_doorbell(ep)
+
+        # Wait for transfered events    
+        transferred = self.wait_for_transfer(ep.dev.address, ep_id)
+        if (transferred < 0):
+            raise Exception("Bulk transfere failed")
+            # if ret == TIMEOUT:
+            #     usb_debug("Stopping ID %d EP 1\n" % dev.address)
+            #     self.cmd_stop_endpoint(dev.address, 1)
+            # return ret
+        
+        if size and ep.direction == Direction.IN:
+            src = t.memblock(data, transferred, 1);
+        return src, transferred
+        
+
+    def urb_enqueue(self, urb):
+        # type: ('URB') -> None
+        # slot_id = urb.dev.address
+        # ep_index = eval_ep_id(urb.ep)
+        # ep_state = int(self.devs[slot_id].eps[ep_index].get(EPContextBits.STATE))
+        # if urb.ep.eptype == EndpointType.ISOCHRONOUS:
+        #     raise Exception("ISOC eps are not supported")
+        # elif (urb.ep.eptype == EndpointType.BULK and
+        #       urb.ep.direction == Direction.OUT and
+        #       urb.transfer_flags & URB_ZERO_PACKET and
+        #       len(urb.transfer_buffer) > 0 and
+        #       not (len(urb.transfer_buffer) % urb.ep.maxpacketsize)):
+        #     num_tds = 2
+        # else:
+        #     num_tds = 1
+        
+        # urb.num_tds = num_tds
+        # urb.num_tds_done = 0
+
+        # trace_xhci_urb_enqueue(urb)
+
+        if urb.ep.eptype == EndpointType.BULK:
+            self.bulk(urb.ep, len(urb.transfer_buffer)/8, urb.transfer_buffer)
+        # elif urb.ep.eptype == EndpointType.INTERRUPT:
+        #     self.interrupt(urb.ep, len(urb.transfer_buffer), urb.transfer_buffer)
+        else:
+            raise Exception("Unsupported urb endpoint type")  
 
 
 def eval_ep_id(ep):

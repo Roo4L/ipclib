@@ -350,6 +350,10 @@ class HCI:
         # type: (int) -> None
         pass
 
+    def submit_urb(self, urb):
+        # type: ('URB') -> None
+        self.urb_enqueue(urb)
+
 
 def usb_set_address(controller, speed, hubport, hubaddr):
     # type: ('HCI', 'USBSpeed', int, int) -> int
@@ -701,4 +705,20 @@ def set_configuration(dev):
 
     _, transfered = dev.controller.control(dev, Direction.OUT, dr, 0, 0)
     return transfered
+
+
+class URB:
+
+    dev = None # type: 'USBDevice'
+    ep = None # type: 'Endpoint'
+    transfer_buffer = None
+
+    def __init__(self, ep):
+        # type: ('Endpoint') -> None
+        self.dev = ep.dev
+        self.ep = ep
+
+    def submit(self):
+        self.dev.controller.submit_urb(self)
+        
 
