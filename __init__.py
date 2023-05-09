@@ -7,6 +7,7 @@ from mmio import *
 from xhci import *
 from ch341 import *
 from serial import *
+from ramdump import *
 
 try:
     t.halt()
