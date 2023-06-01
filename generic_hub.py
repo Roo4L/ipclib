@@ -1,5 +1,6 @@
-from usb import USBDevice, HCI, usb_attach_device, usb_debug
+from usb import USBDevice, HCI, usb_attach_device
 from utils import usleep
+import logging
 
 class GenericHub(USBDevice):
     
@@ -15,23 +16,23 @@ class GenericHub(USBDevice):
             self.enable_port(i)
     
     def enable_port(self, port):
-        usb_debug("hub's enable_port not implemented")
+        logging.error("hub's enable_port not implemented")
         pass
 
     def port_status_changed(self, port):
-        usb_debug("hub's port_status_has_changed not implemented")
+        logging.error("hub's port_status_has_changed not implemented")
         pass
 
     def port_connected(self, port):
-        usb_debug("hub's port_connected not implemented")
+        logging.error("hub's port_connected not implemented")
         pass
 
     def port_enabled(self, port):
-        usb_debug("hub's port_enabled not implemented")
+        logging.error("hub's port_enabled not implemented")
         pass
 
     def port_speed(self, port):
-        usb_debug("hub's port_speed not implemented")
+        logging.error("hub's port_speed not implemented")
         pass
 
     def wait_for_port_enabled(self, port, wait_for, timeout_steps, step_us):
@@ -69,12 +70,12 @@ class GenericHub(USBDevice):
             if not changed and connected:
                 stable_ms += step_ms
             else:
-                usb_debug("generic_hub: Unstable connection at %d" % port);
+                logging.info("generic_hub: Unstable connection at %d" % port);
                 stable_ms = 0
             
             total_ms += step_ms
         if total_ms >= timeout_ms:
-            usb_debug("generic_hub: Debouncing timed out at %d" % port)
+            logging.info("generic_hub: Debouncing timed out at %d" % port)
         return 0
 
     def attach_dev(self, port):
@@ -84,7 +85,7 @@ class GenericHub(USBDevice):
             # return -1;
         self.reset_port(port)
         if not self.port_connected(port):
-            usb_debug(
+            logging.info(
                 "generic_hub: Port %d disconnected after "
                 "reset. Possibly upgraded, rescan required.\n" % port)
             return
@@ -92,23 +93,23 @@ class GenericHub(USBDevice):
         if ret < 0:
             raise Exception("")
         elif not ret:
-            usb_debug("generic_hub: Port %d still "
+            logging.info("generic_hub: Port %d still "
                     "disabled after 10ms" % port)
         
         speed = self.port_speed(port)
         if (speed >= 0):
-            usb_debug("generic_hub: Success at port %d" % port)
+            logging.info("generic_hub: Success at port %d" % port)
             # Reset recovery time (usb20 spec 7.1.7.5)
             usleep(10 * 1000)
             self.ports[port] = usb_attach_device(self.controller, self.address, port, speed)
 
     def scanport(self, port):
         if self.ports[port] >= 0:
-            usb_debug("generic_hub: Detachment at port %d" % port)
+            logging.info("generic_hub: Detachment at port %d" % port)
             # self.detach_dev(port)
         
         if self.port_connected(port):
-            usb_debug("generic_hub: Attachment at port %d" % port)
+            logging.info("generic_hub: Attachment at port %d" % port)
             self.attach_dev(port)
 
     def poll(self):
@@ -120,5 +121,5 @@ class GenericHub(USBDevice):
         # for port in xrange(1, self.num_ports + 1):
         port = 1 # Poll only first port to scan for arduino
         if self.port_status_changed(port):
-            usb_debug("generic_hub: Port change at %d" % port)
+            logging.info("generic_hub: Port change at %d" % port)
             self.scanport(port)

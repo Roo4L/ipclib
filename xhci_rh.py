@@ -1,7 +1,8 @@
 
 from generic_hub import GenericHub
-from usb import USBDevice, USBSpeed, usb_set_address, usb_debug
+from usb import USBDevice, USBSpeed, usb_set_address
 from utils import usleep
+import logging
 
 class XHCIRootHub(GenericHub, USBDevice):
 
@@ -67,25 +68,25 @@ class XHCIRootHub(GenericHub, USBDevice):
     #     pls = portsc[5:7]
     #     if pls == 0:
     #         # USB3 port, already reset
-    #         usb_debug("USB3 Port")
+    #         logging.debug("USB3 Port")
     #     elif pls == 7:
     #         # Initiate reset
     #         portsc[4] = 1
     #         self.controller.bar_write32(0x480 + 0x10 *(port-1), portsc)
     #     else:
-    #         usb_debug("Unknown port state %s" % pls)
+    #         logging.debug("Unknown port state %s" % pls)
         
     #     timeout = 100    
     #     while True:
     #         portsc = self.controller.bar_read32(0x480 + 0x10 * (port-1))
     #         if portsc[0] == 0:
-    #             usb_debug("Disconnected while resetting")
+    #             logging.debug("Disconnected while resetting")
     #             return -1
     #         if portsc[1] == 1:
     #             break
     #         timeout -= 1
     #         if timeout == 0:
-    #             usb_debug("Timeout on reset")
+    #             logging.debug("Timeout on reset")
     #             return -1
     #         usleep(1)
     #     # speed = portsc[10:12]
@@ -96,8 +97,8 @@ class XHCIRootHub(GenericHub, USBDevice):
     #     #     3: "High",
     #     #     4: "Super"
     #     # }
-    #     # usb_debug("Port %d reset. SC=%s - %s Speed" % (port, portsc, XHCI_PORT_SPEEDS.get(int(speed), "Super")))
-    #     usb_debug("Port %d reset. SC=%s" % (port, portsc))
+    #     # logging.debug("Port %d reset. SC=%s - %s Speed" % (port, portsc, XHCI_PORT_SPEEDS.get(int(speed), "Super")))
+    #     logging.debug("Port %d reset. SC=%s" % (port, portsc))
     #     return 0
 
     def reset_port(self, port):
@@ -108,9 +109,9 @@ class XHCIRootHub(GenericHub, USBDevice):
         self.controller.bar_write32(0x480 + 0x10 * (port-1), portsc)
 
         if not self.wait_for_port_in_reset(port, False, 150, 1000):
-            usb_debug("xhci_rh: Reset timed out at port %d" % port)
+            logging.info("xhci_rh: Reset timed out at port %d" % port)
         else:
-            usb_debug("Port %d reset." % (port))
+            logging.info("Port %d reset." % (port))
             portsc = self.controller.bar_read32(0x480 + 0x10 * (port-1))
             portsc = (portsc & ((1 << 4) | (((1 << (4)) - 1) << (5)) | (1 << 9) | (((1 << (2)) - 1) << (14)) | (1 << 16)
  | (1 << 25) | (1 << 26) | (1 << 27)) | (1 << 21) | (1 << 19))
@@ -119,7 +120,7 @@ class XHCIRootHub(GenericHub, USBDevice):
     def check_ports(self):
         for i in range(self.num_ports):
             if self.port_connected(i):
-                usb_debug("Port %d has a connected device" % (i + 1))
+                logging.info("Port %d has a connected device" % (i + 1))
                 speed = self.reset_port(i)
                 if speed > 0:
                     usb_set_address(self.controller, speed, i, self.address)

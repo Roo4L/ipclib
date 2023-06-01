@@ -1,9 +1,9 @@
 from utils import ipc, t, debug, usleep
 from mem import phys
+import logging
 
 
 GET_DESCRIPTOR_TRIES = 3
-usb_debug = debug
 
 
 class Data:
@@ -295,7 +295,7 @@ class HCI:
 
     def init_device_entry(self, dev, i):
         if self.devices[i] != None:
-            usb_debug("warning: device %d reassigned?\n" % i)
+            logging.warning("device %d reassigned?\n" % i)
         self.devices[i] = dev
 
     def start(self):
@@ -359,10 +359,10 @@ def usb_set_address(controller, speed, hubport, hubaddr):
     # type: ('HCI', 'USBSpeed', int, int) -> int
     dev = controller.set_address(speed, hubport, hubaddr)
     if not dev:
-        usb_debug("set_address failed")
+        logging.info("set_address failed")
         return -1
     
-    usb_debug("set address succeed\n"
+    logging.info("set address succeed\n"
               "dev:\n"
               "  hubport: {}\n"
               "  hubaddr: {}\n"
@@ -378,7 +378,7 @@ def usb_set_address(controller, speed, hubport, hubaddr):
     dev.descriptor = DeviceDescriptor()
     # data, transfered = dev.get_descriptor(DR_DESC(), DT.DEV, 0, dev.descriptor, 144/8)
     # if transfered != 144:
-    #     usb_debug("get_descriptor(DT_DEV) failed")
+    #     logging.debug("get_descriptor(DT_DEV) failed")
     #     # usb_detach_device(controller, dev.address)
     #     return -1
     # dev.descriptor.data = data
@@ -394,7 +394,7 @@ def usb_set_address(controller, speed, hubport, hubaddr):
     dev.descriptor.set(DeviceDescriptorBits.iProduct, 2)
     dev.descriptor.set(DeviceDescriptorBits.bNumConfigurations, 1)
 
-    usb_debug("* found device (0x%04x:0x%04x, USB %x.%x, MPS0: %d)" % (
+    logging.info("* found device (0x%04x:0x%04x, USB %x.%x, MPS0: %d)" % (
               dev.descriptor.get(DeviceDescriptorBits.idVendor),
               dev.descriptor.get(DeviceDescriptorBits.idProduct),
               dev.descriptor.get(DeviceDescriptorBits.bcdUSB) >> 8,
@@ -405,16 +405,16 @@ def usb_set_address(controller, speed, hubport, hubaddr):
     #                     dev->descriptor->idProduct);
 
     bNumConfigurations = dev.descriptor.get(DeviceDescriptorBits.bNumConfigurations)
-    usb_debug("device has %d configurations" % bNumConfigurations)
+    logging.info("device has %d configurations" % bNumConfigurations)
     if bNumConfigurations == 0:
-        usb_debug("... no usable configuration!")
+        logging.info("... no usable configuration!")
         # usb_detach_device(controller, device.address)
         return -1
     
     # buf = ipc.BitData(32, 0)
     # buf, transfered = dev.get_descriptor(DR_DESC, DT.CFG, 0, buf, 32 / 8)
     # if transfered != 32 / 8:
-    #     usb_debug("first get_descriptor(DT_CFG) failed")
+    #     logging.debug("first get_descriptor(DT_CFG) failed")
     #     # usb_detach_device(controller, device.address)
     #     return -1
     
@@ -426,7 +426,7 @@ def usb_set_address(controller, speed, hubport, hubaddr):
     # dev.configuration, transfered = dev.get_descriptor(DR_DESC, DT.CFG, 0,
     #                                                    dev.configuration, configuration_len)
     # if transfered != configuration_len:
-    #     usb_debug("get_descriptor(DT_CFG) failed")
+    #     logging.debug("get_descriptor(DT_CFG) failed")
     #     # usb_detach_device(controller, device.address)
     #     return -1
 
@@ -444,16 +444,16 @@ def usb_set_address(controller, speed, hubport, hubaddr):
     cd = dev.configuration
 
     if cd.get(ConfigurationDescriptorBits.wTotalLength) != configuration_len:
-        usb_debug("configuration descriptor size changed, aborting")
+        logging.info("configuration descriptor size changed, aborting")
         # usb_detach_device(controller, dev.address)
         return -1;
 
     bNumInterfaces = cd.get(ConfigurationDescriptorBits.bNumInterfaces)
-    usb_debug("device has %x interfaces" % bNumInterfaces)
+    logging.info("device has %x interfaces" % bNumInterfaces)
     ifnum = usb_interface_check(dev.descriptor.get(DeviceDescriptorBits.idVendor),
                                 dev.descriptor.get(DeviceDescriptorBits.idProduct))
     if bNumInterfaces > 1 and ifnum < 0:
-            usb_debug("NOTICE: Your device has multiple interfaces and\n"
+            logging.warning("NOTICE: Your device has multiple interfaces and\n"
             "this driver will only use the first one. That may\n"
             "be the wrong choice and cause the device to not\n"
             "work correctly. Please report this case\n"
@@ -468,7 +468,7 @@ def usb_set_address(controller, speed, hubport, hubaddr):
     # while True:
     #     if (ptr + 2 > end or not config_array[ptr]
     #         or (ptr + config_array[ptr]) > end):
-    #         usb_debug("Couldn't find usable DT_INTF")
+    #         logging.debug("Couldn't find usable DT_INTF")
     #         # usb_detach_device(controller, dev.address)
     #         return -1
 
@@ -478,7 +478,7 @@ def usb_set_address(controller, speed, hubport, hubaddr):
 
     #     intf.data = dev.configuration[ptr*8:ptr*8+72]
     #     if intf.get(InterfaceDescriptorBits.bLength) != 72 / 8:
-    #         usb_debug("Skipping broken DT_INTF")
+    #         logging.debug("Skipping broken DT_INTF")
     #         ptr += config_array[ptr]
     #         continue
 
@@ -486,7 +486,7 @@ def usb_set_address(controller, speed, hubport, hubaddr):
     #         ptr += config_array[ptr]
     #         continue
 
-    #     usb_debug("Interface %d: class 0x%x, sub 0x%x. proto 0x%x" % (
+    #     logging.debug("Interface %d: class 0x%x, sub 0x%x. proto 0x%x" % (
 	# 		intf.get(InterfaceDescriptorBits.bInterfaceNumber),
     #         intf.get(InterfaceDescriptorBits.bInterfaceClass),
     #         intf.get(InterfaceDescriptorBits.bInterfaceSubClass),
@@ -510,7 +510,7 @@ def usb_set_address(controller, speed, hubport, hubaddr):
     #     desc = EndpointDescriptor()
     #     desc.data = dev.configuration[ptr*8:ptr*8+len(desc.data)]
     #     transfertypes = [ "control", "isochronous", "bulk", "interrupt"]
-    #     usb_debug(" #Endpoint %d (%s), max packet size %x, type %s" % (
+    #     logging.debug(" #Endpoint %d (%s), max packet size %x, type %s" % (
     #         desc.get(EndpointDescriptorBits.EnbEndpointAddress) & 0x7f,
     #         "in" if (desc.get(EndpointDescriptorBits.bEndpointAddress) & 0x80) else "out",
     #         desc.get(EndpointDescriptorBits.wMaxPacketSize),
@@ -565,7 +565,7 @@ def usb_set_address(controller, speed, hubport, hubaddr):
     # if class_id == 0:
     #     class_id = intf.get(InterfaceDescriptorBits.bInterfaceClass)
     
-    usb_debug("Class: %d" % class_id)
+    logging.info("Class: %d" % class_id)
     return dev.address
 
 class DevReqDir:
@@ -625,19 +625,19 @@ def usb_decode_mps0(speed, mps0):
         if mps0 in [8, 16, 32, 64]:
             return mps0
         else:
-            usb_debug("Invalid MPS0: %d" % mps0)
+            logging.warning("Invalid MPS0: %d" % mps0)
             return 8
     elif speed == USBSpeed.HIGH_SPEED:
         if mps0 != 64:
-            usb_debug("Invalid MPS0: %d" % mps0)
+            logging.warning("Invalid MPS0: %d" % mps0)
         return 64
     elif (speed == USBSpeed.SUPER_SPEED or
           speed == USBSpeed.SUPER_SPEED_PLUS):
         if (mps0 != 9):
-            usb_debug("Invalid MPS0: %d" % mps0)
+            logging.warning("Invalid MPS0: %d" % mps0)
         return 1 << mps0
     else:
-        usb_debug("Unexpected usb speed")
+        logging.warning("Unexpected usb speed")
         return 8
 
 def speed_to_default_mps(speed):
@@ -648,12 +648,12 @@ def speed_to_default_mps(speed):
           speed == USBSpeed.SUPER_SPEED_PLUS):
         return 512   
     else:
-        usb_debug("Unexpected usb speed: %d" % speed)
+        logging.warning("Unexpected usb speed: %d" % speed)
         return 512
 
 def usb_attach_device(controller, hubaddress, port, speed):
     speeds = ["full", "low", "high", "super", "ultra"]
-    usb_debug("%s speed device" % speeds[speed]if (speed < len(speeds) and speed >=0) else "invalid value - no")
+    logging.info("%s speed device" % speeds[speed]if (speed < len(speeds) and speed >=0) else "invalid value - no")
     newdev = usb_set_address(controller, speed, port, hubaddress)
     if newdev == -1:
         return -1

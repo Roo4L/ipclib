@@ -2,6 +2,9 @@ from xhci import *
 from usb import *
 from serial import *
 import math
+import logging
+
+ch341_logger = logging.getLogger(__name__)
 
 DEFAULT_BAUD_RATE = 9600
 
@@ -80,7 +83,7 @@ class CH341(USBSerialGeneric):
         buffer = self.control_in(dev, CH341_REQ_READ_VERSION, 0, 0, buffer, size)
 
         self.version = int(buffer[0:7])
-        usb_debug("Chip version: %x" % self.version)
+        ch341_logger.info("Chip version: %x" % self.version)
 
         self.control_out(dev, CH341_REQ_SERIAL_INIT, 0, 0)
         
@@ -111,7 +114,7 @@ class CH341(USBSerialGeneric):
         quirks = CH341_QUIRK_LIMITED_PRESCALER | CH341_QUIRK_SIMULATE_BREAK
 
         if quirks:
-            usb_debug("enabling quirk flags: 0x%02lx\n" % quirks)
+            ch341_logger.debug("enabling quirk flags: 0x%02lx\n" % quirks)
             self.quirks |= quirks
 
     def control_in(self, dev, request, value, index, buf, bufsize):
@@ -219,11 +222,13 @@ class CH341(USBSerialGeneric):
         # if tty:
         #     self.set_termios(tty, port, None)
         
-        # usb_debug("submitting interrupt urb")
+        # ch341_logger.debug("submitting interrupt urb")
         # port.interrupt_in_urb.submit()
         # if r:
         #     raise Exception("failed to submit interrupt urb: %d" % r)
+        ch341_logger.info("Getting status")
         self.get_status(port.serial.dev)
+        ch341_logger.info("Status got. Updated msr.")
         
         USBSerialGeneric.open(self, port)
     
