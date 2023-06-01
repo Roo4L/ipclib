@@ -90,16 +90,19 @@ ldt_ranges = [
     (0x00000000, 0x00003),
     (0xFFFF0000, 0xF01CF)]
 
+
 def save_mmios(pwd, mmios, prefix="MMIO_"):
     try:
         os.makedirs(pwd)
     except:
         pass
     # Sort by size
-    mmios.sort(lambda a, b: cmp(a[1], b[1]) if a[1] != b[1] else cmp(a[0], b[0]))
+    mmios.sort(lambda a, b: cmp(a[1], b[1])
+               if a[1] != b[1] else cmp(a[0], b[0]))
     for (addr, size) in mmios:
         print("Addr: %s, size: %s" % (hex(addr), hex(size)))
-        path = os.path.join(pwd, prefix + hex(addr)[2:].replace("L", "") + ".bin")
+        path = os.path.join(pwd, prefix + hex(addr)
+                            [2:].replace("L", "") + ".bin")
         if os.path.exists(path):
             statinfo = os.stat(path)
             if statinfo.st_size >= size:
@@ -121,15 +124,18 @@ def save_mmios(pwd, mmios, prefix="MMIO_"):
 # agregator instead. So let's try to bruteforce a few of these, see if any of them
 # returns anything.
 
+
 def bruteforce_sideband(pwd, group=0, start=0, end=0x100, size=0x8000, rs=1, fid=0):
     for i in xrange(start, end):
         channel = (group << 8) + i
         print("Dumping Sideband : %s" % hex(channel))
         dump_sideband_channel(pwd, channel, size=size, rs=rs, fid=fid)
 
+
 def bruteforce_sideband_port(pwd, port, start=0, end=0x100, size=0x1000):
     for i in xrange(start, end, 2):
         bruteforce_sideband(pwd, group=i, start=port, end=port+1, size=size)
+
 
 def setup_sideband_channel(channel, rs=1, fid=0, base_address=None):
     if base_address:
@@ -143,6 +149,7 @@ def setup_sideband_channel(channel, rs=1, fid=0, base_address=None):
     t.mem(phys(sb_channel_port_addr + 0x18), 4, channel)
     t.mem(phys(sb_channel_port_addr + 0x1c), 4, rs << 8 | fid)
     return (t.mem(phys(sb_channel_port_addr), 4), t.mem(phys(sb_channel_port_addr + 4), 4))
+
 
 def dump_sideband_channel(pwd, channel, size=0x8000, rs=1, fid=0):
     try:
@@ -162,6 +169,7 @@ def dump_sideband_channel(pwd, channel, size=0x8000, rs=1, fid=0):
     except:
         print("SB seems to have locked")
         ipc.resettarget()
+
 
 def dump_sideband_channel_via_sbreg(pwd, channel, offset=0, size=0x8000, rs=1, fid=0, bar=0, opcode=0):
     tpsbs = [i for i in dir(ipc.stateport) if "tpsb" in i]
@@ -183,12 +191,13 @@ def dump_sideband_channel_via_sbreg(pwd, channel, offset=0, size=0x8000, rs=1, f
             offset = i - (data.BitSize / 8)
         if force or i + 4 >= limit:
             if data.BitSize > 0:
-                print "0x%08X: %s%s" % (offset, " ".join(map(lambda b: "%02X" % b, data.ToRawBytes())), "" if data.BitSize == 0x80 else "   ***")
+                print "0x%08X: %s%s" % (offset, " ".join(map(
+                    lambda b: "%02X" % b, data.ToRawBytes())), "" if data.BitSize == 0x80 else "   ***")
                 data = ipc.BitData(0, 0)
             offset = i + 4
         force = False
-        
-            
+
+
 def clear_psf():
     dump_sideband_channel(pwd, 0x0706ba, 0x10)
     memset(0xf5048000, 0, 0x4000)

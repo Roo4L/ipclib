@@ -4,9 +4,10 @@ import os
 
 ipc = None
 
+
 def connect():
     global ipc
-    
+
     if ipc is None:
         ipc = ipccli.baseaccess()
     else:
@@ -14,21 +15,26 @@ def connect():
 
     return ipc
 
+
 def setLogging(path=None, echo=False, logger="ipc", level="DEBUG"):
     manager = ipccli.cli_logging.getManager()
     manager.setFile(path)
     manager.echo(echo)
     manager.level(logger, level)
 
+
 def usleep(us):
     time.sleep(us / 1000000.0)
 
+
 def log(str):
     print(str)
-    
+
+
 def debug(str):
     pass
-    
+
+
 def genTaps(max, depth=0, max_depth=1, parent="SPT_TAP"):
     res = ""
     for i in xrange(0, max, 2):
@@ -42,6 +48,7 @@ def genTaps(max, depth=0, max_depth=1, parent="SPT_TAP"):
     # <TapInfo TapName="SPT_TAP.*" NodeType="Box" Stepping="$(Stepping)" AddInstanceNameSuffix="false"/>
     # Or whatever parent/prefix you use for the initial call set in TapName
 
+
 def displayValidIdcodes(prefix=""):
     for d in ipc.devs:
         if d.name.startswith(prefix):
@@ -50,6 +57,7 @@ def displayValidIdcodes(prefix=""):
             if proc_id != 0:
                 idcode += " (" + proc_id.ToHex() + ")"
             print("%s : %s" % (d.name, idcode))
+
 
 ipc = connect()
 print(ipc.devicelist)

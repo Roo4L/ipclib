@@ -18,6 +18,3 @@ try:
     pass
 except:
     pass
-
-#setLogging("ipc.log")
-

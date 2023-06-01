@@ -22,7 +22,7 @@ proc_addresses = {
         "SPT_CSME_C0_T0": 20,
         "KBP_CSME_C0_T0": 20,
         "CSE_C0_T0": 21
-    },        
+    },
     "SB_CHANNEL": {
         "SPT_CSME_C0_T0": 0xF00A90E0,
         "KBP_CSME_C0_T0": 0xF00A9000,
@@ -144,7 +144,7 @@ proc_addresses = {
             (0xE00D0000, 0x00001000),
             (0xE0052000, 0x00001000),
             (0xF4622000, 0x00001000),
-            (0xF5200000, 0x00010000)  
+            (0xF5200000, 0x00010000)
         ],
         "CSE_C0_T0": [
             # MMIO Ranges from bup metadata
@@ -324,6 +324,7 @@ proc_addresses = {
         ]
     }
 }
+
 
 def proc_get_address(thread, name, default=0):
     addr_table = proc_addresses.get(name, {})

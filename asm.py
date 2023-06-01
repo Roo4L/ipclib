@@ -3,17 +3,20 @@ from utils import *
 from segments import *
 from proc import *
 
+
 def get_registers(thread):
     registers = []
-    register_list = ["eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp", "eip"]
+    register_list = ["eax", "ebx", "ecx", "edx",
+                     "esi", "edi", "ebp", "esp", "eip"]
     for reg in register_list:
         registers.append((reg, thread.arch_register(reg)))
     return registers
 
+
 def print_registers(thread=None):
     if thread is None:
         thread = t
-        
+
     was_running = False
     # Halt the thread if needed
     if thread.isrunning():
@@ -26,6 +29,7 @@ def print_registers(thread=None):
     if was_running:
         thread.go()
 
+
 def write_asm(thread, *instructions):
     if thread.isrunning():
         thread.halt()
@@ -34,11 +38,13 @@ def write_asm(thread, *instructions):
     addr = cs.ToHex() + ":%X" % entry
     thread.asm(addr, *instructions + ("jmp $", ))
     thread.arch_register("eip", entry)
-    
+
+
 def execute_asm(thread, *instructions):
     write_asm(thread, *instructions)
     thread.go()
     wait_until_infinite_loop(thread)
+
 
 def wait_until_infinite_loop(thread, print_regs=True):
     while True:
@@ -56,9 +62,10 @@ def wait_until_infinite_loop(thread, print_regs=True):
     if print_regs:
         print_registers()
 
+
 def read_pci_dev_0(thread=None):
     if thread is None:
-        thread=t
+        thread = t
     execute_asm(thread,
                 "mov dx, 0xcf8",
                 "mov eax, 0x80000000",
@@ -81,11 +88,13 @@ def v3_resume():
     t.arch_register("eip", 0x0003d25b)
     print("Just call : thread.go()")
 
+
 def pop():
     ss = reg("ss")
     ret = t.mem(ss.ToHex() + ":" + reg("esp").ToHex(), 4)
     reg("esp", reg("esp") + 4)
     return ret
+
 
 def v4_resume():
     try:
@@ -97,29 +106,33 @@ def v4_resume():
     reg("eip", pop())
     print("Just call : thread.go()")
 
+
 def asm(addr, size=1):
     # t.asm changes the register values, so we need to save them first!
     eax = t.arch_register("eax")
     ebx = t.arch_register("ebx")
     ecx = t.arch_register("ecx")
     edx = t.arch_register("edx")
-    result = t.asm(addr,size)
+    result = t.asm(addr, size)
     t.arch_register("eax", eax)
     t.arch_register("ebx", ebx)
     t.arch_register("ecx", ecx)
     t.arch_register("edx", edx)
-    
+
     print result
     return result
-    
+
+
 def step(num=1):
     t.step("branch", num)
     asm("$", 5)
 
+
 def stepOver(num=1):
     instructions = asm("$", num + 1)
     goUntil(instructions[-1].address)
-    
+
+
 def stepToBR(num=1):
     t.brdisable()
     t.step("into", num)
@@ -132,6 +145,7 @@ def stepToBR(num=1):
     t.halt()
     asm("$", 5)
 
+
 def goUntil(addr):
     br = t.brnew(addr)
     t.go()
@@ -140,6 +154,7 @@ def goUntil(addr):
     t.brremove(br)
     asm("$", 5)
 
+
 def printStack():
     ss = t.arch_register("ss")
     cs = t.arch_register("cs")
@@ -147,7 +162,8 @@ def printStack():
     esp = t.arch_register("esp")
     eip = t.arch_register("eip")
     while True:
-        print "%s:%s (ebp: %s - local stack of %s bytes)" % (cs.ToHex(), eip.ToHex(), ebp.ToHex(), (ebp - esp).ToHex())
+        print "%s:%s (ebp: %s - local stack of %s bytes)" % (cs.ToHex(),
+                                                             eip.ToHex(), ebp.ToHex(), (ebp - esp).ToHex())
         try:
             try:
                 asm(cs.ToHex() + ":" + eip.ToHex(), 2)
@@ -157,8 +173,10 @@ def printStack():
             esp = ebp + 8
             ebp = t.mem(ss.ToHex() + ":" + ebp.ToHex(), 4)
         except Exception as e:
-            print "Cannot read stack further (eip:%s, ebp=%s, esp=%s)" % (eip.ToHex(), ebp.ToHex(), esp.ToHex())
+            print "Cannot read stack further (eip:%s, ebp=%s, esp=%s)" % (
+                eip.ToHex(), ebp.ToHex(), esp.ToHex())
             break
+
 
 def printStackContent():
     ss = t.arch_register("ss")
@@ -166,19 +184,23 @@ def printStackContent():
     table = ss[2]
     idx = ss[3:15]
     base = t.arch_register("ldtbas" if table else "gdtbas")
-    segment = GDTEntry(t.memblock(str(base.ToUInt32() + 8 * idx.ToUInt32()) + "L", 8, 1))
+    segment = GDTEntry(t.memblock(
+        str(base.ToUInt32() + 8 * idx.ToUInt32()) + "L", 8, 1))
     limit = segment.limit
     print("ESP : %s" % esp.ToHex())
     esp = esp & ~0xF
     t.memdump(ss.ToHex() + ":" + esp.ToHex(), limit - esp, 1)
+
 
 def peek(register, offset=0, size=4, value=None):
     ds = reg("ds")
     reg_value = reg(register)
     return t.mem(ds.ToHex() + ":" + hex(reg_value + offset), size, value)
 
+
 def poke(register, offset=0, value=None, size=4):
     return peek(register, offset, size, value)
+
 
 def register(register_name, offset=None, value=None, size=4):
     if offset is None:
@@ -186,15 +208,19 @@ def register(register_name, offset=None, value=None, size=4):
     else:
         return poke(register_name, offset, value, size)
 
+
 def reg(name, value=None):
     return register(name, value=value)
 
-    
+
 def ebp(*args, **kwargs):
     return register("ebp", *args, **kwargs)
 
+
 def force_32_bit_asmmode(did):
     return '32Bit'
+
+
 ipc.devs.base.cmds._instruction_size = force_32_bit_asmmode
 
 
@@ -205,7 +231,6 @@ def reset_me():
     stepOver(4)
     t.mem(ebp-8, 4, 0xd)
     t.go()
-    
 
 
 def reset_me_with_fuse():
@@ -217,7 +242,8 @@ def reset_me_with_fuse():
     ipc.stateport.spt_tpsb0.sbreg(4, 0, 0, 0xd5, 1, 4, 6)
     # Reset target
     t.mem("0x17:200", 4, t.mem("0x17:200", 4) | 0x41)
-    #ipc.resettarget()
+    # ipc.resettarget()
+
 
 def escalate_to_ring0():
     t.halt()

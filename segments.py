@@ -3,6 +3,7 @@ import os
 from utils import *
 from asm import *
 
+
 class Selector:
     def __init__(self, bits):
         self.bits = bits
@@ -12,7 +13,8 @@ class Selector:
 
     def __str__(self):
         return "%s %d (Privilege level %d)" % ("LDT" if self.table else "GDT", self.idx.ToUInt32(), self.rpl.ToUInt32())
-    
+
+
 class GDTEntry:
     def __init__(self, bits):
         # https://wiki.osdev.org/Global_Descriptor_Table
@@ -36,8 +38,6 @@ class GDTEntry:
         self.sz = self.flags[2]
         self.gr = self.flags[3]
 
-        
-
     def __str__(self):
         return "Segment: %s\n" \
             "  Base Address: %s\n" \
@@ -56,20 +56,26 @@ class GDTEntry:
             "    Accessed: %s\n" % \
             (self.bits,
              self.base_addr,
-             self.limit.ToHex() if self.gr == 0 else hex(self.limit.ToUInt32() * 0x1000), self.limit,
+             self.limit.ToHex() if self.gr == 0 else hex(
+                 self.limit.ToUInt32() * 0x1000), self.limit,
              self.flags,
              "4K Page" if self.gr else "Byte",
              "32-Bit" if self.sz else "16-Bit",
-             "x86-64" if self.ex and self.l else ("x86-32" if self.ex else "Not a code segment"),
+             "x86-64" if self.ex and self.l else (
+                 "x86-32" if self.ex else "Not a code segment"),
              self.avl,
              self.access,
              self.pr,
              "Ring-%d" % self.privl.ToUInt32(),
-             "System Segment" if not self.s else ("Code" if self.ex else "Data"),
-             "R-X" if self.ex and self.rw else ("--X" if self.ex else ("RW-" if self.rw else "R--")),
+             "System Segment" if not self.s else (
+                 "Code" if self.ex else "Data"),
+             "R-X" if self.ex and self.rw else (
+                 "--X" if self.ex else ("RW-" if self.rw else "R--")),
              "Conforming" if self.ex else "Direction",
-             ("Grown down" if self.dc else "Grows up") if not self.ex else (("" if self.dc else "Not ") + "Conforming"),
+             ("Grown down" if self.dc else "Grows up") if not self.ex else (
+                 ("" if self.dc else "Not ") + "Conforming"),
              self.ac)
+
 
 class IDTEntry:
     def __init__(self, bits):
@@ -85,15 +91,13 @@ class IDTEntry:
         self.privl = self.type_attr[5:6]
         self.pr = self.type_attr[7]
 
-        
-
     def __str__(self):
         GATE_TYPES = {5: "32-bit Task Gate",
                       6: "16-bit Interrupt Gate",
                       7: "16-bit Trap Gate",
                       14: "32-bit Interrupt Gate",
                       15: "32-bit Trap Gate"}
-        
+
         return "Segment: %s\n" \
             "  Selector: %s (%s)\n" \
             "  Offset: %s\n" \
@@ -110,7 +114,8 @@ class IDTEntry:
              "Ring-%d" % self.privl.ToUInt32(),
              self.s,
              GATE_TYPES.get(self.gate_type.ToUInt32(), "Invalid"))
-    
+
+
 def print_segment(name, base, limit):
     entries = (limit.ToUInt32() + 1) // 8
     print("%s (%s, %s) has %d entries" % (name, base, limit, entries))
@@ -124,6 +129,7 @@ def print_segment(name, base, limit):
             print("**** %s Entry %d ****" % (name, i))
             print("%s" % str(entry))
 
+
 def print_segments():
     gdtbas = t.arch_register("gdtbas")
     gdtlim = t.arch_register("gdtlim")
@@ -135,6 +141,7 @@ def print_segments():
     ldtlim = t.arch_register("ldtlim")
     print_segment("LDT", ldtbas, ldtlim)
 
+
 def print_selector(selector):
     if selector.__class__ != ipccli.bitdata.BitData:
         selector = ipccli.bitdata.BitData(16, selector)
@@ -143,7 +150,9 @@ def print_selector(selector):
     base = t.arch_register("ldtbas" if table else "gdtbas")
     segment = t.memblock(str(base.ToUInt32() + 8 * idx.ToUInt32()) + "L", 8, 1)
     entry = GDTEntry(segment)
-    print "**** %s:%d (%s) ****\n%s" % ("LDT" if table else "GDT", idx.ToUInt32(), selector.ToHex(), str(entry))
+    print "**** %s:%d (%s) ****\n%s" % ("LDT" if table else "GDT",
+                                        idx.ToUInt32(), selector.ToHex(), str(entry))
+
 
 def segment_addr_to_linear(selector, addr):
     if type(selector) == str:
@@ -160,6 +169,7 @@ def segment_addr_to_linear(selector, addr):
     else:
         return None
 
+
 def table_to_mmio(base, limit):
     entries = (limit.ToUInt32() + 1) // 8
     mmios = []
@@ -170,6 +180,7 @@ def table_to_mmio(base, limit):
             mmios.append((entry.base_addr.ToHex(), entry.limit.ToHex()))
     print mmios
 
+
 def gdt_ldt_to_mmio():
     gdtbas = t.arch_register("gdtbas")
     gdtlim = t.arch_register("gdtlim")
@@ -178,7 +189,7 @@ def gdt_ldt_to_mmio():
     ldtlim = t.arch_register("ldtlim")
     table_to_mmio(ldtbas, ldtlim / 2)
 
-    
+
 def save_to_file(filename, cmd):
     stdout = sys.stdout
     stderr = sys.stderr
@@ -194,9 +205,11 @@ def save_to_file(filename, cmd):
     if exception:
         raise e
 
+
 def dump_segments(filename):
     save_to_file(filename, print_segments)
-    
+
+
 def dump_ldts():
     base = t.arch_register("ldtbas")
     limit = t.arch_register("ldtlim")
@@ -206,4 +219,3 @@ def dump_ldts():
         entry = GDTEntry(segment)
         if entry.pr:
             t.memsave("LDT-" + i + ".bin", str(entry.base.ToUInt32()) + "L")
-    

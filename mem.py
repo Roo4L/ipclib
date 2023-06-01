@@ -2,6 +2,7 @@ from utils import *
 from asm import *
 from segments import *
 
+
 class PDE:
     def __init__(self, offset, bits):
         # https://wiki.osdev.org/Paging
@@ -18,9 +19,6 @@ class PDE:
         self.user_supervisor = bits[2]
         self.read_write = bits[1]
         self.present = bits[0]
-
-
-        
 
     def __str__(self):
         return "Page Directory Entry: %s\n" \
@@ -49,14 +47,14 @@ class PDE:
              self.user_supervisor,
              self.read_write,
              self.present)
-    
+
+
 class PTE(PDE):
     def __init__(self, pde, offset, bits):
         PDE.__init__(self, offset, bits)
         self.pde = pde
         self.dirty = self.reserved
-        
-        
+
     def __str__(self):
         return "Page Table Entry: %s\n" \
             "  Memory address : %s-%s\n" \
@@ -86,6 +84,7 @@ class PTE(PDE):
              self.read_write,
              self.present)
 
+
 def print_memory_mapping():
     cr0 = reg("cr0")
     pd = reg("cr3")
@@ -105,6 +104,8 @@ def print_memory_mapping():
                     pte = PTE(pde, j, pte)
                     if pte.present:
                         print(pte)
+
+
 def print_pages():
     cr0 = reg("cr0")
     pd = reg("cr3")
@@ -125,6 +126,7 @@ def print_pages():
                     if pte.present:
                         print(pte)
 
+
 def linear_to_pages(addr):
     addr_bits = ipc.BitData(32, addr)
     directory = addr_bits[22:31].ToUInt32()
@@ -142,9 +144,8 @@ def linear_to_pages(addr):
             return (pde, pte, offset)
 
     return (pde, None, offset)
-        
-    
-                        
+
+
 def print_page_info(addr):
     (pde, pte, offset) = linear_to_pages(addr)
     if pde.present:
@@ -152,14 +153,16 @@ def print_page_info(addr):
             if pte.present:
                 print(pte)
                 print "Offset in table : %s" % hex(offset)
-                print "Physical address : 0x%XP" % (pte.base_addr.ToUInt32() << 12 | offset)
+                print "Physical address : 0x%XP" % (
+                    pte.base_addr.ToUInt32() << 12 | offset)
                 return pte
             else:
                 print "Table not present"
         else:
             print(pde)
             print "Offset in table : %s" % hex(offset)
-            print "Physical address : %sP" % hex(pde.base_addr.ToUInt32() << 12 | offset)
+            print "Physical address : %sP" % hex(
+                pde.base_addr.ToUInt32() << 12 | offset)
             return pde
     else:
         print "Directory not present"
@@ -168,6 +171,7 @@ def print_page_info(addr):
 def virt_to_phys(addr, selector="ds"):
     linear = segment_addr_to_linear(selector, addr)
     return linear_to_phys(linear)
+
 
 def linear_to_phys(addr):
     (pde, pte, offset) = linear_to_pages(addr)
@@ -178,25 +182,32 @@ def linear_to_phys(addr):
     if pde.present:
         return pde.base_addr.ToUInt32() << 12 | offset
     return None
-    
+
+
 def dump_pages(filename):
     save_to_file(filename, print_pages)
+
 
 def memdump_ds(addr, size=0x10):
     ds = reg("ds")
     return t.memdump(ds.ToHex() + ":" + hex(addr), size, 1)
 
+
 def memset(addr, value, size):
     t.memblock(phys(addr), int(size), 1, value)
+
 
 def memcpy(addr, value, size):
     t.memblock(phys(addr), int(size), 1, value.ToRawBytes())
 
+
 def memtostr(addr, size):
     return "".join(map(chr, t.memblock(addr, size, 1).ToRawBytes()))
 
+
 def phys(addr):
     return hex(addr).replace("L", "") + "P"
+
 
 def malloc(size):
     malloc_func = proc_get_address(t, "SYSLIB:MALLOC")
@@ -210,6 +221,7 @@ def malloc(size):
     wait_until_infinite_loop(t, False)
     return reg("eax")
 
+
 def malign(alignment, size):
     malign_func = proc_get_address(t, "SYSLIB:MALIGN")
     execute_asm(t,
@@ -222,13 +234,16 @@ def malign(alignment, size):
     wait_until_infinite_loop(t, False)
     return reg("eax")
 
+
 dma_heap = None
+
 
 def dma_init_heap():
     global dma_heap
     setup_att(0x20000000, 0x10000000, 0x20000000, 0x03060001)
     dma_heap = 0x20000000
-    
+
+
 def dma_alloc(size, memset_value=None):
     global dma_heap
     size = int(size)
@@ -239,6 +254,7 @@ def dma_alloc(size, memset_value=None):
     if memset_value is not None:
         memset(addr, memset_value, size)
     return addr
+
 
 def dma_align(alignment, size, memset_value=None):
     global dma_heap
@@ -252,12 +268,14 @@ def dma_align(alignment, size, memset_value=None):
         memset(addr, memset_value, size)
     return addr
 
+
 def setup_att(addr, size, external, control):
     t.mem(phys(0xf00a80c0), 4, addr)
     t.mem(phys(0xf00a80c4), 4, size)
     t.mem(phys(0xf00a80c8), 4, external & 0xFFFFFFFF)
     t.mem(phys(0xf00a80cc), 4, external >> 32)
     t.mem(phys(0xf00a80d0), 4, control)
+
 
 def dram(addr, size):
     att = t.memblock(phys(0xf00a8000), 0x20, 1)
