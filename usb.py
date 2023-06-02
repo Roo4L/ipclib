@@ -1,3 +1,13 @@
+# USB Interfaces implementation
+#
+# This implementation is mostly a translation of coreboot usb library
+# If you have any issues with it, it might refer to original C implementation
+# at https://github.com/coreboot/coreboot/tree/master/payloads/libpayload
+#
+# The part related to USB Serial and Universal Request Blocks is inspired by
+# linux kernel. If it is of any interest, one may refer to origin C implementation
+# at https://elixir.bootlin.com/linux/latest/source/drivers/usb/serial/ch341.c
+
 from utils import ipc, t, debug, usleep
 from mem import phys
 import logging
@@ -7,6 +17,10 @@ GET_DESCRIPTOR_TRIES = 3
 
 
 class Data:
+    """
+    Class for low-level data manipulation. Maps physical byte data to ipc.BitData structure.
+    """
+
     def __init__(self, size, data=0, addr=None):
         self.size = size
         self.data = ipc.BitData(size, data)
@@ -180,6 +194,9 @@ class EndpointType:
 
 
 class Endpoint:
+    """
+    USB Device Endpoint
+    """
     dev = None  # type: 'USBDevice'
     endpoint = None  # type: int
     toggle = None  # type: int
@@ -296,7 +313,7 @@ class USBDevice:
 
 class HCI:
     """
-    abstract interface for any Host Controller (EHCI, OHCI, XHCI, etc.)
+    Abstract interface for any Host Controller (EHCI, OHCI, XHCI, etc.)
     """
     next = None  # type: 'HCI'
     reg_base = None  # type: int
@@ -369,6 +386,9 @@ class HCI:
 
 def usb_set_address(controller, speed, hubport, hubaddr):
     # type: ('HCI', 'USBSpeed', int, int) -> int
+    """
+    SET_ADDRESS call from USB Specification
+    """
     dev = controller.set_address(speed, hubport, hubaddr)
     if not dev:
         logging.info("set_address failed")
@@ -732,7 +752,11 @@ def set_configuration(dev):
 
 
 class URB:
-
+    """
+    Universal Request Block
+    Maps interfaces of drivers from linux kernel to the USB stack based on
+    coreboot usb library implementation
+    """
     dev = None  # type: 'USBDevice'
     ep = None  # type: 'Endpoint'
     transfer_buffer = None

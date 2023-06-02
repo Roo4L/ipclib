@@ -1,3 +1,9 @@
+# USB Interfaces implementation
+#
+# This implementation is mostly a translation linux kernel. If it is of any
+# interest, one may refer to origin C implementation
+# at https://elixir.bootlin.com/linux/latest/source/drivers/usb/serial/ch341.c
+
 from usb import *
 
 USB_SERIAL_WRITE_BUSY = 0

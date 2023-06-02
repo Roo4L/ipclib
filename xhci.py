@@ -1,3 +1,9 @@
+# eXtensible Host Controller Interface implementation
+#
+# This implementation is mostly a translation of coreboot usb library
+# If you have any issues with it, it might refer to original C implementation
+# at https://github.com/coreboot/coreboot/tree/master/payloads/libpayload
+
 from mmio import *
 from utils import *
 from segments import *
@@ -17,6 +23,10 @@ URB_ZERO_PACKET = 0x0040
 
 
 class TRB(Data):
+    """
+    Transfer Request Block
+    Refer to XHCI Specification for details
+    """
     PTR_LOW = 0
     PTR_HIGH = 32
     STATUS = 64
@@ -138,6 +148,11 @@ class TRBCompletionCode:
 
 
 class XHCICycleRing:
+    """
+    XHCI Cycle Ring.
+    Used as a base class for Transfer, Command, and Event rings.
+    """
+
     def __init__(self, size):
         self.ring = dma_align(64, size * 0x10)
         self.size = size
@@ -231,6 +246,11 @@ class XHCICycleRing:
 
 
 class XHCICommandRing(XHCICycleRing):
+    """
+    XHCI Command Ring
+
+    Refer to XHCI Specification for details
+    """
 
     def init(self):
         XHCICycleRing.init(self)
@@ -344,6 +364,11 @@ class XHCICommandRing(XHCICycleRing):
 
 
 class XHCIEventRing(XHCICycleRing):
+    """
+    XHCI Event Ring
+
+    Refer to XHCI Specification for details.
+    """
 
     def reset(self):
         trb = TRB()
@@ -508,6 +533,11 @@ class XHCIEventRing(XHCICycleRing):
 
 
 class SlotContext(Data):
+    """
+    Slot Context
+
+    Refer to XHCI Specification for details
+    """
     F1 = 0
     F2 = 32
     F3 = 64
@@ -599,6 +629,17 @@ class Intrq:
 
 
 class XHCIDevice:
+    """
+    XHCI Device Class
+
+    Responsible for aggregating data structures relevant for specific XHCI device:
+        - device transfer rings (for each endpoint)
+        - device interrupt queues (not implemented)
+        - device endpoints
+        - device output context
+        - device doorbell register
+    """
+
     def __init__(self, slot_id, addr=None):
         self.slot_id = slot_id
         if addr is None:
@@ -637,6 +678,10 @@ class XHCIDevice:
 
 
 class XHCIInputContext:
+    """
+    Input Context of Device passed during SET_ADDRESS call
+    """
+
     def __init__(self, slot_id, add_list=[], drop_list=[]):
         self.slot_id = slot_id
         self.ctx = dma_align(64, 0x20 + NUM_EPS * 0x20, memset_value=0)
@@ -654,6 +699,12 @@ class XHCIInputContext:
 
 
 class XHCI(HCI):
+    """
+    eXtensible Host Controller Interface
+
+    Contains all information relevant to host controller and implements all of the basic
+    commands which XHCI is responsible for.
+    """
     # Sideband and PCI addressing
     port = None
     fid = None
@@ -956,6 +1007,9 @@ class XHCI(HCI):
 
     def set_address(self, speed, port, hubaddr):
         # type: ('USBSpeed', int, int) -> USBDevice
+        """
+        Execute SET_ADDRESS call
+        """
         cc, slot_id = self.cr.enable_slot()
         if cc != TRBCompletionCode.SUCCESS:
             raise Exception("Slot Enable command failed. CC = %s" %
@@ -1050,6 +1104,9 @@ class XHCI(HCI):
 
     def control(self, dev, dir, devreq, data_len, src):
         # type: (USBDevice, Direction, DeviceRequest, int, ipc.BitData) -> Tuple[ipc.BitData, int]
+        """
+        Issue packet transfer for control endpoint
+        """
         data = src
         logging.debug("xhci.devs[%d]: %s\n%s" %
                       (dev.address,
@@ -1243,6 +1300,9 @@ class XHCI(HCI):
 
     def bulk(self, ep, size, src):
         # type: ('Endpoint', int, ipc.BitData) -> None
+        """
+        Issue packet transfer for bulk endpoint
+        """
         slot_id = ep.dev.address
         ep_id = eval_ep_id(ep)
         epctx = self.devs[slot_id].eps[ep_id]

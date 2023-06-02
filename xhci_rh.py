@@ -1,3 +1,8 @@
+# XHCI RootHub Device implementation
+#
+# This implementation is mostly a translation of coreboot usb library
+# If you have any issues with it, it might refer to original C implementation
+# at https://github.com/coreboot/coreboot/tree/master/payloads/libpayload
 
 from generic_hub import GenericHub
 from usb import USBDevice, USBSpeed, usb_set_address
@@ -6,6 +11,9 @@ import logging
 
 
 class XHCIRootHub(GenericHub, USBDevice):
+    """
+    XHCI RootHub USB Device
+    """
 
     def __init__(self, controller):
         num_ports = controller.max_ports

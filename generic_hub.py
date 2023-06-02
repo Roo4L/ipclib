@@ -1,9 +1,18 @@
+# USB Generic Hub implementation
+#
+# This implementation is mostly a translation of coreboot usb library
+# If you have any issues with it, it might refer to original C implementation
+# at https://github.com/coreboot/coreboot/tree/master/payloads/libpayload
+
 from usb import USBDevice, HCI, usb_attach_device
 from utils import usleep
 import logging
 
 
 class GenericHub(USBDevice):
+    """
+    USB Generic Hub Device
+    """
 
     num_ports = None
     ports = None
@@ -120,8 +129,7 @@ class GenericHub(USBDevice):
         #     hub->ops->hub_status_changed(dev) != 1) {
         #     return;
         # }
-        # for port in xrange(1, self.num_ports + 1):
-        port = 1  # Poll only first port to scan for arduino
-        if self.port_status_changed(port):
-            logging.info("generic_hub: Port change at %d" % port)
-            self.scanport(port)
+        for port in xrange(1, self.num_ports + 1):
+            if self.port_status_changed(port):
+                logging.info("generic_hub: Port change at %d" % port)
+                self.scanport(port)
