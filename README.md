@@ -36,7 +36,11 @@ If the connection have not been established, try reopening python console and im
 
 Please look at the code itself to figure out which functions are available and what they do. There is no guarantee that none of them are broken.
 
-The XHCI Controller code was heavily inspired by coreboot and the seabios implementation. The CH341 driver was inspired by the linux kernel impleme
+The XHCI Controller code was heavily inspired by coreboot and the seabios implementation. The CH341 driver was inspired by the linux kernel implemetation.
+
+## Tested platforms
+
+Library has been tested with GB-BPCE-3350 as a target device. Library has been under Ubuntu 18.04 with Intel System Studio 2019.
 
 ## License
 
