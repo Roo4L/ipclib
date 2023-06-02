@@ -26,6 +26,9 @@ Indx DID         Alias                                    Type                  
 6    0x00004005  CDU_PCIE_TAP0                            CDU_PCIE_TAP                            B2   0x0210162B   0/-/ -/-  Yes
 7    ...
 ```
+
+If the connection have not been established, try reopening python console and import `ipclib` once again. Try to mix with the order in which you power on target device and import ipclib.
+
 2. After establishing the connection, one can access library interfaces and global variables. The following global variables are available:
     a. `t` - the variable containing the first thread of the device.
     b. `ipc` - the ipc object itself.
