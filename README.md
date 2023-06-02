@@ -30,9 +30,9 @@ Indx DID         Alias                                    Type                  
 If the connection have not been established, try reopening python console and import `ipclib` once again. Try to mix with the order in which you power on target device and import ipclib.
 
 2. After establishing the connection, one can access library interfaces and global variables. The following global variables are available:
-    a. `t` - the variable containing the first thread of the device.
-    b. `ipc` - the ipc object itself.
-    c. `xhci` - XHCI controller object.
+   - `t` - the variable containing the first thread of the device.
+   - `ipc` - the ipc object itself.
+   - `xhci` - XHCI controller object.
 
 Please look at the code itself to figure out which functions are available and what they do. There is no guarantee that none of them are broken.
 
